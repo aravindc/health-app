@@ -1,0 +1,27 @@
+module health-sync
+
+go 1.25.6
+
+require (
+	github.com/go-resty/resty/v2 v2.17.2
+	github.com/goccy/go-json v0.10.5
+	github.com/sirupsen/logrus v1.9.4
+	github.com/t-tomalak/logrus-easy-formatter v0.0.0-20190827215021-c074f06c5816
+	github.com/uptrace/bun v1.2.16
+	github.com/uptrace/bun/dialect/pgdialect v1.2.16
+	github.com/uptrace/bun/driver/pgdriver v1.2.16
+)
+
+require (
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
+	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
+	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	go.opentelemetry.io/otel v1.38.0 // indirect
+	go.opentelemetry.io/otel/trace v1.38.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	mellium.im/sasl v0.3.2 // indirect
+)
