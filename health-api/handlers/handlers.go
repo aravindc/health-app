@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"health-api/config" // Adjust this import path
-	"health-api/models" // Adjust this import path
+	"health-api/config"
+	"health-api/models"
 )
 
 // Handler holds the application state, like the DB connection and config
@@ -24,6 +24,18 @@ type Handler struct {
 func NewHandler(db *gorm.DB, cfg *config.Config) *Handler {
 	return &Handler{DB: db, Cfg: cfg}
 }
+
+// --- Constants ---
+
+const (
+	// SgvToMmolFactor converts mg/dL to mmol/L
+	SgvToMmolFactor = 18.0
+
+	// Page sizes for paginated endpoints
+	PageSizeLatest = 36  // ~3 hours at 5-min intervals
+	PageSize12h    = 144 // 12 hours at 5-min intervals
+	PageSize4h     = 48  // 4 hours at 5-min intervals
+)
 
 // --- Helper Structs for JSON Responses ---
 
@@ -97,7 +109,6 @@ func (h *Handler) getData(hours int) ([]DataPoint, error) {
 	var results []models.NsPart
 	latResponse := []DataPoint{}
 
-	// Query: select(Ns_part.ns_time, Ns_part.sgv).where(Ns_part.ns_datetime >= start_time).order_by(Ns_part.ns_time.desc())
 	startTime := time.Now().Add(-time.Duration(hours) * time.Hour)
 	tx := h.DB.Select("ns_time", "sgv").
 		Where("ns_datetime >= ?", startTime).
@@ -110,14 +121,13 @@ func (h *Handler) getData(hours int) ([]DataPoint, error) {
 
 	// Process results
 	for _, result := range results {
-		mmol := round(float64(result.Sgv)/18.0, 1)
+		mmol := round(float64(result.Sgv)/SgvToMmolFactor, 1)
 		inRange := mmol >= minMmol && mmol <= strictMaxMmol
 
 		var pointColor string
 		if inRange {
 			pointColor = "hsl(124, 45%, 37%)"
 		} else {
-			// This logic replicates the Python file exactly, including the hardcoded '12'
 			if mmol < minMmol || mmol > medicalMaxMmol {
 				pointColor = "hsl(360, 68%, 36%)"
 			} else {
@@ -126,9 +136,9 @@ func (h *Handler) getData(hours int) ([]DataPoint, error) {
 		}
 
 		latResponse = append(latResponse, DataPoint{
-			Epoch:      result.NsTime.UnixMilli(), // Python `result.ns_time`
+			Epoch:      result.NsTime.UnixMilli(),
 			Mmol:       mmol,
-			Datetime:   result.NsTime, // Python `datetime.fromtimestamp((result.ns_time)/1000)`
+			Datetime:   result.NsTime,
 			Date:       result.NsTime.Format("2006-01-02"),
 			Time:       result.NsTime.Format("15:04:05"),
 			InRange:    inRange,
@@ -148,22 +158,30 @@ func (h *Handler) Root(c *gin.Context) {
 
 // HealthReady (GET /health)
 func (h *Handler) HealthReady(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "OK"})
+	sqlDB, err := h.DB.DB()
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "database": err.Error()})
+		return
+	}
+	if err := sqlDB.Ping(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "database": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "OK", "database": "OK"})
 }
 
 // GetLatest (GET /latest/:page_num)
 func (h *Handler) GetLatest(c *gin.Context) {
 	pageNum, err := strconv.Atoi(c.Param("page_num"))
-	if err != nil || pageNum == 0 {
+	if err != nil || pageNum < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong Page number"})
 		return
 	}
 
-	pageSize := 36
-	offset := pageSize * (pageNum - 1)
+	offset := PageSizeLatest * (pageNum - 1)
 	var latestResponse []models.Latest
 
-	tx := h.DB.Order("bg_time desc").Limit(pageSize).Offset(offset).Find(&latestResponse)
+	tx := h.DB.Order("bg_time desc").Limit(PageSizeLatest).Offset(offset).Find(&latestResponse)
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
 		return
@@ -175,7 +193,7 @@ func (h *Handler) GetLatest(c *gin.Context) {
 // GetDailyAvg (GET /dailyavg/:days)
 func (h *Handler) GetDailyAvg(c *gin.Context) {
 	days, err := strconv.Atoi(c.Param("days"))
-	if err != nil || days == 0 {
+	if err != nil || days < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of days"})
 		return
 	}
@@ -193,7 +211,7 @@ func (h *Handler) GetDailyAvg(c *gin.Context) {
 // GetDailyTir (GET /dailytir/:days)
 func (h *Handler) GetDailyTir(c *gin.Context) {
 	days, err := strconv.Atoi(c.Param("days"))
-	if err != nil || days == 0 {
+	if err != nil || days < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of days"})
 		return
 	}
@@ -238,17 +256,15 @@ func (h *Handler) GetAvgMmol(c *gin.Context) {
 // GetLast12h (GET /last12h/:page_num)
 func (h *Handler) GetLast12h(c *gin.Context) {
 	pageNum, err := strconv.Atoi(c.Param("page_num"))
-	if err != nil || pageNum == 0 {
-		// Python code doesn't check for 0 here, but it's good practice
+	if err != nil || pageNum < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong Page number"})
 		return
 	}
 
-	pageSize := 12 * 12
-	offset := pageSize * (pageNum - 1)
+	offset := PageSize12h * (pageNum - 1)
 	var results []models.Latest
 
-	tx := h.DB.Order("bg_time desc").Limit(pageSize).Offset(offset).Find(&results)
+	tx := h.DB.Order("bg_time desc").Limit(PageSize12h).Offset(offset).Find(&results)
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
 		return
@@ -257,8 +273,8 @@ func (h *Handler) GetLast12h(c *gin.Context) {
 	latResponse := make([]XYTimeResponse, 0, len(results))
 	for _, r := range results {
 		latResponse = append(latResponse, XYTimeResponse{
-			X: r.BgTime,           // Replicates result.bg_time*1000
-			Y: round(r.BgMmol, 1), // Replicates round(result.bg_mmol, 1)
+			X: r.BgTime,
+			Y: round(r.BgMmol, 1),
 			Z: r.CreatedAt,
 		})
 	}
@@ -269,7 +285,7 @@ func (h *Handler) GetLast12h(c *gin.Context) {
 // GetQuart (GET /quart/:days)
 func (h *Handler) GetQuart(c *gin.Context) {
 	days, err := strconv.Atoi(c.Param("days"))
-	if err != nil || days == 0 {
+	if err != nil || days < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of days"})
 		return
 	}
@@ -294,7 +310,7 @@ func (h *Handler) GetQuart(c *gin.Context) {
 	quartResponse := make([]float64, len(sgvResults))
 	sum := 0.0
 	for i, sgv := range sgvResults {
-		val := round(float64(sgv)/18.0, 2)
+		val := round(float64(sgv)/SgvToMmolFactor, 2)
 		quartResponse[i] = val
 		sum += val
 	}
@@ -302,11 +318,14 @@ func (h *Handler) GetQuart(c *gin.Context) {
 	muVal := sum / float64(len(quartResponse))
 
 	// Calculate Standard Deviation (Sample)
-	sdValSum := 0.0
-	for _, val := range quartResponse {
-		sdValSum += math.Pow(val-muVal, 2)
+	sdVal := 0.0
+	if len(quartResponse) > 1 {
+		sdValSum := 0.0
+		for _, val := range quartResponse {
+			sdValSum += math.Pow(val-muVal, 2)
+		}
+		sdVal = math.Sqrt(sdValSum / float64(len(quartResponse)-1))
 	}
-	sdVal := math.Sqrt(sdValSum / float64(len(quartResponse)-1))
 
 	// Round final stats
 	muVal = round(muVal, 2)
@@ -330,16 +349,15 @@ func (h *Handler) GetQuart(c *gin.Context) {
 // GetLast4h (GET /last4h/:page_num)
 func (h *Handler) GetLast4h(c *gin.Context) {
 	pageNum, err := strconv.Atoi(c.Param("page_num"))
-	if err != nil || pageNum == 0 {
+	if err != nil || pageNum < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong Page number"})
 		return
 	}
 
-	pageSize := 4 * 12
-	offset := pageSize * (pageNum - 1)
+	offset := PageSize4h * (pageNum - 1)
 	var results []models.Latest
 
-	tx := h.DB.Order("bg_time desc").Limit(pageSize).Offset(offset).Find(&results)
+	tx := h.DB.Order("bg_time desc").Limit(PageSize4h).Offset(offset).Find(&results)
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
 		return
@@ -357,14 +375,13 @@ func (h *Handler) GetLast4h(c *gin.Context) {
 	c.JSON(http.StatusOK, latResponse)
 }
 
-// GetLastXh (GET /lastxh/:hours/:page_num)
+// GetLastXh (GET /lastxh/:hours)
 func (h *Handler) GetLastXh(c *gin.Context) {
 	hours, err := strconv.Atoi(c.Param("hours"))
-	if err != nil || hours == 0 {
+	if err != nil || hours < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of hours"})
 		return
 	}
-	// Note: page_num is in the path but unused in the Python `getData`
 
 	latResponse, err := h.getData(hours)
 	if err != nil {
@@ -377,7 +394,7 @@ func (h *Handler) GetLastXh(c *gin.Context) {
 // GetTimeInRange (GET /timeinrange/:hours)
 func (h *Handler) GetTimeInRange(c *gin.Context) {
 	hours, err := strconv.Atoi(c.Param("hours"))
-	if err != nil || hours == 0 {
+	if err != nil || hours < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of hours"})
 		return
 	}
@@ -414,7 +431,7 @@ func (h *Handler) GetTimeInRange(c *gin.Context) {
 // GetPercentInRange (GET /percentinrange/:hours)
 func (h *Handler) GetPercentInRange(c *gin.Context) {
 	hours, err := strconv.Atoi(c.Param("hours"))
-	if err != nil || hours == 0 {
+	if err != nil || hours < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of hours"})
 		return
 	}
@@ -456,7 +473,7 @@ func (h *Handler) GetPercentInRange(c *gin.Context) {
 // Get7DaySparkline (GET /7dsparkline/:day_num)
 func (h *Handler) Get7DaySparkline(c *gin.Context) {
 	dayNum, err := strconv.Atoi(c.Param("day_num"))
-	if err != nil || dayNum == 0 {
+	if err != nil || dayNum < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong day number"})
 		return
 	}
@@ -504,7 +521,7 @@ func (h *Handler) GetLast24hSparkline(c *gin.Context) {
 // GetGmi (GET /gmi/:days)
 func (h *Handler) GetGmi(c *gin.Context) {
 	days, err := strconv.Atoi(c.Param("days"))
-	if err != nil || days == 0 {
+	if err != nil || days < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of days"})
 		return
 	}
@@ -593,10 +610,6 @@ func (h *Handler) PutInsulin(c *gin.Context) {
 		return
 	}
 
-	// The Python code had a bug/ambiguity. It seemed to want to
-	// insert only two fields, but the model has many.
-	// GORM's .Create() will insert the entire bound object.
-	// This assumes the JSON from the client matches the 'Insulin' model.
 	tx := h.DB.Create(&insulinData)
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Could not save insulin data"})
