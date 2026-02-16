@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"health-sync/bridge"
 	"health-sync/db"
+	"health-sync/metrics"
+	"health-sync/server"
 	"os"
 	"os/signal"
 	"strconv"
@@ -68,13 +71,17 @@ func renewSession() {
 	newSession, err := bridge.GetSessionId(loginUrl, authUrl)
 	if err != nil {
 		log.Error("Failed to renew session: ", err)
+		metrics.APIErrors.Inc()
 		return
 	}
 	sessionID = newSession
+	metrics.SessionRenewals.Inc()
 	log.Info("Session renewed successfully")
 }
 
 func syncBGReadings(pgClient *sql.DB) {
+	metrics.SyncCyclesTotal.Inc()
+
 	if !bridge.IsSessionIdValid(sessionID, latestbgUrl) {
 		log.Info("Session ID is invalid. Renewing it")
 		renewSession()
@@ -83,26 +90,40 @@ func syncBGReadings(pgClient *sql.DB) {
 	latestBG, err := bridge.GetLatestBG(latestbgUrl, sessionID)
 	if err != nil {
 		log.Error("Failed to fetch BG data: ", err)
+		metrics.SyncErrors.Inc()
+		metrics.APIErrors.Inc()
 		return
 	}
+
+	metrics.BGReadingsFetched.Add(float64(len(latestBG)))
 
 	for _, val := range latestBG {
 		exists, err := db.EntriesExist(pgClient, int64(val.Ns_time))
 		if err != nil {
 			log.Error("Failed to check entry existence: ", err)
+			metrics.DBErrors.Inc()
 			continue
 		}
 		if !exists {
 			if err := db.InsertEntries(pgClient, val); err != nil {
 				log.Error("Failed to insert entry: ", err)
+				metrics.DBErrors.Inc()
+			} else {
+				metrics.BGReadingsInserted.Inc()
+				metrics.LastBGValue.Set(float64(val.Sgv))
 			}
 		} else {
+			metrics.BGReadingsDuplicate.Inc()
 			log.Debug("Record already exists: ", val)
 		}
 	}
+
+	metrics.LastSyncTimestamp.SetToCurrentTime()
 }
 
 func main() {
+	startTime := time.Now()
+
 	// Initialize session
 	var err error
 	sessionID, err = bridge.GetSessionId(loginUrl, authUrl)
@@ -125,6 +146,16 @@ func main() {
 	}
 	defer pgClient.Close()
 
+	// Set up signal handling for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start health/metrics server
+	go server.Start(ctx, pgClient, startTime)
+
 	// Initial sync
 	syncBGReadings(pgClient)
 
@@ -138,10 +169,6 @@ func main() {
 	ticker := time.NewTicker(time.Duration(syncInterval) * time.Second)
 	defer ticker.Stop()
 
-	// Set up signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
 	log.Info("Health-sync started. Polling every ", syncInterval, " seconds.")
 
 	for {
@@ -150,6 +177,7 @@ func main() {
 			syncBGReadings(pgClient)
 		case sig := <-sigChan:
 			log.Info("Received signal: ", sig, ". Shutting down gracefully.")
+			cancel()
 			return
 		}
 	}
