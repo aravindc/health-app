@@ -1,0 +1,12 @@
+# Compiled binary
+health-api
+
+# Environment files
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
