@@ -17,7 +17,7 @@ import (
 )
 
 // DbClient returns a *sql.DB object for connecting to a PostgreSQL database.
-func DbClient(postgres_host string, postgres_port string, pg_user string, pg_pass string, pg_db string) *sql.DB {
+func DbClient(postgres_host string, postgres_port string, pg_user string, pg_pass string, pg_db string) (*sql.DB, error) {
 
 	// Check if NS_ENV is set
 	_, nsEnvExists := os.LookupEnv("NS_ENV")
@@ -52,53 +52,48 @@ func DbClient(postgres_host string, postgres_port string, pg_user string, pg_pas
 	case "verify-ca", "verify-full":
 		caCertPath := os.Getenv("DB_CA_CERT_PATH")
 		if caCertPath == "" {
-			log.Fatal("DB_CA_CERT_PATH must be set when DB_SSL_MODE is ", sslMode)
+			return nil, fmt.Errorf("DB_CA_CERT_PATH must be set when DB_SSL_MODE is %s", sslMode)
 		}
 		caCert, err := os.ReadFile(caCertPath)
 		if err != nil {
-			log.Fatal("Failed to read CA certificate: ", err)
+			return nil, fmt.Errorf("failed to read CA certificate: %w", err)
 		}
 		caCertPool := x509.NewCertPool()
 		if !caCertPool.AppendCertsFromPEM(caCert) {
-			log.Fatal("Failed to parse CA certificate")
+			return nil, fmt.Errorf("failed to parse CA certificate")
 		}
 		connOpts = append(connOpts, pgdriver.WithTLSConfig(&tls.Config{
 			RootCAs:    caCertPool,
 			ServerName: postgres_host,
 		}))
 	default:
-		log.Fatal("Invalid DB_SSL_MODE: ", sslMode, ". Must be one of: disable, require, verify-ca, verify-full")
+		return nil, fmt.Errorf("invalid DB_SSL_MODE: %s. Must be one of: disable, require, verify-ca, verify-full", sslMode)
 	}
 
 	pgconn := pgdriver.NewConnector(connOpts...)
-	return sql.OpenDB(pgconn)
-}
+	db := sql.OpenDB(pgconn)
 
-// SelectEntries retrieves a list of Nightscoutdb entries from the database.
-func SelectEntries(db_client *sql.DB) []model.Nightscoutdb {
-	db := bun.NewDB(db_client, pgdialect.New())
-	ctx := context.Background()
-	var nsentries []model.Nightscoutdb
-	err := db.NewSelect().Table("nightscoutdb").Model(&nsentries).Limit(5).Scan(ctx)
-	if err != nil {
-		log.Fatal("Select error: ", err)
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	return nsentries
+	log.Info("Database connection established")
+
+	return db, nil
 }
 
 // EntriesExist checks if a Nightscoutdb entry with the specified ns_time exists in the database.
-func EntriesExist(db_client *sql.DB, ns_time int64) bool {
+func EntriesExist(db_client *sql.DB, ns_time int64) (bool, error) {
 	db := bun.NewDB(db_client, pgdialect.New())
 	ctx := context.Background()
 	exists, err := db.NewSelect().Table("nightscoutdb").Where("ns_time = ?", ns_time).Exists(ctx)
 	if err != nil {
-		log.Fatal("Exists error: ", err)
+		return false, fmt.Errorf("exists check error: %w", err)
 	}
-	return exists
+	return exists, nil
 }
 
 // InsertEntries inserts a Nightscoutdb entry into the database.
-func InsertEntries(db_client *sql.DB, nsItem model.Nightscoutdb) {
+func InsertEntries(db_client *sql.DB, nsItem model.Nightscoutdb) error {
 	db := bun.NewDB(db_client, pgdialect.New())
 	ctx := context.Background()
 	newNsItem := &model.Nightscoutdb{
@@ -110,9 +105,10 @@ func InsertEntries(db_client *sql.DB, nsItem model.Nightscoutdb) {
 		Systime:     nsItem.Systime,
 	}
 	log.Info("Trying to insert: ", nsItem.Sgv, nsItem.Ns_time, nsItem.Ns_datetime, nsItem.Trend, nsItem.Utcoffset, nsItem.Systime)
-	res, err := db.NewInsert().Model(newNsItem).Exec(ctx)
-	log.Info("Insert result: ", res)
+	_, err := db.NewInsert().Model(newNsItem).Exec(ctx)
 	if err != nil {
-		log.Fatal("Insert error: ", err)
+		return fmt.Errorf("insert error: %w", err)
 	}
+	log.Info("Insert successful for ns_time: ", nsItem.Ns_time)
+	return nil
 }

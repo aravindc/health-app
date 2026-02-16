@@ -1,9 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"health-sync/bridge"
 	"health-sync/db"
 	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -46,79 +50,107 @@ func init() {
 	// Check if BRIDGE_SERVER variable value is set
 	_, bridgeServerExists := os.LookupEnv("BRIDGE_SERVER")
 	if !bridgeServerExists {
-		log.Fatal("Environment variables: BRIDGE_SERVER shoud be set")
+		log.Fatal("Environment variables: BRIDGE_SERVER should be set")
 	}
 	// Check if BRIDGE_USER variable value is set
 	_, bridgeUserExists := os.LookupEnv("BRIDGE_USER")
 	if !bridgeUserExists {
-		log.Fatal("Environment variables: BRIDGE_USER shoud be set")
+		log.Fatal("Environment variables: BRIDGE_USER should be set")
 	}
 	// Check if BRIDGE_PASS variable value is set
 	_, bridgePassExists := os.LookupEnv("BRIDGE_PASS")
 	if !bridgePassExists {
-		log.Fatal("Environment variables: BRIDGE_PASS shoud be set")
+		log.Fatal("Environment variables: BRIDGE_PASS should be set")
 	}
-
-	// Session is initialized only once and may become invalid after its expiry
-	// TODO: Write a function to check the validity of session_id and renew if required
-	sessionID = bridge.GetSessionId(loginUrl, authUrl)
-	log.Info("Session ID is: ", sessionID)
-	log.Info("Latest BG URL is: ", latestbgUrl)
-
 }
 
-// Retrieve BG data every 2 minutes
-func getBGData() {
+func renewSession() {
+	newSession, err := bridge.GetSessionId(loginUrl, authUrl)
+	if err != nil {
+		log.Error("Failed to renew session: ", err)
+		return
+	}
+	sessionID = newSession
+	log.Info("Session renewed successfully")
+}
 
-	pg_client := db.DbClient(
+func syncBGReadings(pgClient *sql.DB) {
+	if !bridge.IsSessionIdValid(sessionID, latestbgUrl) {
+		log.Info("Session ID is invalid. Renewing it")
+		renewSession()
+	}
+
+	latestBG, err := bridge.GetLatestBG(latestbgUrl, sessionID)
+	if err != nil {
+		log.Error("Failed to fetch BG data: ", err)
+		return
+	}
+
+	for _, val := range latestBG {
+		exists, err := db.EntriesExist(pgClient, int64(val.Ns_time))
+		if err != nil {
+			log.Error("Failed to check entry existence: ", err)
+			continue
+		}
+		if !exists {
+			if err := db.InsertEntries(pgClient, val); err != nil {
+				log.Error("Failed to insert entry: ", err)
+			}
+		} else {
+			log.Debug("Record already exists: ", val)
+		}
+	}
+}
+
+func main() {
+	// Initialize session
+	var err error
+	sessionID, err = bridge.GetSessionId(loginUrl, authUrl)
+	if err != nil {
+		log.Fatal("Failed to get initial session ID: ", err)
+	}
+	log.Info("Session ID obtained")
+	log.Info("Latest BG URL is: ", latestbgUrl)
+
+	// Initialize DB connection once
+	pgClient, err := db.DbClient(
 		os.Getenv("POSTGRES_HOST"),
 		os.Getenv("POSTGRES_PORT"),
 		os.Getenv("POSTGRES_USER"),
 		os.Getenv("POSTGRES_PASSWORD"),
 		os.Getenv("POSTGRES_DB"),
 	)
-
-	checkSessionValidity := func() {
-		if !bridge.IsSessionIdValid(sessionID, latestbgUrl) {
-			sessionID = bridge.GetSessionId(loginUrl, authUrl)
-			log.Info("Session ID is invalid. Renewing it")
-		}
-	} // Check if session_id is valid
-
-	checkSessionValidity()
-	latest_bg := bridge.GetLatestBG(latestbgUrl, sessionID)
-
-	// Initial Connection
-	for _, val := range latest_bg {
-		// Check if record exists based on hash value
-		if !db.EntriesExist(pg_client, int64(val.Ns_time)) {
-			// Insert record into db if it does exist
-			db.InsertEntries(pg_client, val)
-		} else {
-			log.Info("Record already exists: ", val)
-		}
-		// log.Info("The value of SGV is: ", val)
-		// log.Info("Records: ", db.SelectEntries(pg_client))
+	if err != nil {
+		log.Fatal("Failed to connect to database: ", err)
 	}
+	defer pgClient.Close()
 
-	// Run this ticker every 2 minutes
-	ticker := time.NewTicker(1 * time.Minute)
-	for range ticker.C {
-		checkSessionValidity()
-		latest_bg := bridge.GetLatestBG(latestbgUrl, sessionID)
-		for _, val := range latest_bg {
-			if !db.EntriesExist(pg_client, int64(val.Ns_time)) {
-				db.InsertEntries(pg_client, val)
-			} else {
-				log.Info("Record already exists: ", val)
-			}
-			// log.Info(val)
+	// Initial sync
+	syncBGReadings(pgClient)
+
+	// Set up ticker
+	syncInterval := 60
+	if v := os.Getenv("SYNC_INTERVAL_SECONDS"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			syncInterval = parsed
 		}
 	}
-}
+	ticker := time.NewTicker(time.Duration(syncInterval) * time.Second)
+	defer ticker.Stop()
 
-func main() {
-	go getBGData()
-	// Insert other function calls here
-	select {}
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	log.Info("Health-sync started. Polling every ", syncInterval, " seconds.")
+
+	for {
+		select {
+		case <-ticker.C:
+			syncBGReadings(pgClient)
+		case sig := <-sigChan:
+			log.Info("Received signal: ", sig, ". Shutting down gracefully.")
+			return
+		}
+	}
 }
