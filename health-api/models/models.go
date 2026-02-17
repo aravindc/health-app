@@ -54,7 +54,7 @@ func (AvgMmol) TableName() string {
 type NsPart struct {
 	ID         int       `gorm:"primaryKey" json:"id"`
 	Sgv        int       `json:"sgv"`
-	NsTime     time.Time `json:"ns_time"` // Note: This was `datetime` in Python
+	NsTime     int64     `json:"ns_time"`
 	NsDatetime time.Time `json:"ns_datetime"`
 	Trend      int       `json:"trend"`
 	Utcoffset  int       `json:"utcoffset"`

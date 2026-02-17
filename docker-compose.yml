@@ -35,6 +35,18 @@ services:
       - ./.env
     depends_on:
       - health-db
+  health-fe:
+    networks:
+      - health_fe
+    build:
+      context: ./health-fe
+      args:
+        VITE_API_URL: http://localhost:9082
+    ports:
+      - "9083:80"
+    restart: on-failure
+    depends_on:
+      - health-api
 
 networks:
   health_fe:

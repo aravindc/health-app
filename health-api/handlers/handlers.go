@@ -135,12 +135,13 @@ func (h *Handler) getData(hours int) ([]DataPoint, error) {
 			}
 		}
 
+		nsTime := time.UnixMilli(result.NsTime)
 		latResponse = append(latResponse, DataPoint{
-			Epoch:      result.NsTime.UnixMilli(),
+			Epoch:      result.NsTime,
 			Mmol:       mmol,
-			Datetime:   result.NsTime,
-			Date:       result.NsTime.Format("2006-01-02"),
-			Time:       result.NsTime.Format("15:04:05"),
+			Datetime:   nsTime,
+			Date:       nsTime.Format("2006-01-02"),
+			Time:       nsTime.Format("15:04:05"),
 			InRange:    inRange,
 			PointColor: pointColor,
 		})

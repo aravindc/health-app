@@ -301,6 +301,17 @@ AS SELECT a.bg_datetime,
           GROUP BY (pir.bg_datetime::date)
           ORDER BY (pir.bg_datetime::date) DESC) a;
 
+DROP VIEW IF EXISTS public.daily_tir;
+CREATE OR REPLACE VIEW public.daily_tir
+AS SELECT s.bg_datetime AS bg_date,
+    s.in_range_val AS in_range_strict_val,
+    m.in_range_val AS in_range_medical_val,
+    s.total_recs,
+    s.pir AS pir_strict,
+    m.pir AS pir_medical
+   FROM daily_tir_strict s
+   JOIN daily_tir_medical m ON s.bg_datetime = m.bg_datetime;
+
 create or replace function create_ns_part_row()
 returns trigger 
 language PLPGSQL

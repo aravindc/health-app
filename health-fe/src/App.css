@@ -1,0 +1,348 @@
+/* ===== Dashboard Layout ===== */
+.dashboard {
+  min-height: 100vh;
+  background: #1a1a1a;
+  color: #e0e0e0;
+  padding: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.dashboard__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #333;
+}
+
+.dashboard__label {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.dashboard__error {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+/* ===== Current Reading ===== */
+.current-reading__main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.current-reading__value {
+  font-size: 3.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.current-reading__arrow {
+  font-size: 2rem;
+}
+
+.current-reading__diff {
+  font-size: 1rem;
+  color: #aaa;
+}
+
+.current-reading__diff small {
+  font-size: 0.75rem;
+  color: #777;
+}
+
+.current-reading__meta {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.current-reading--normal .current-reading__value {
+  color: #e0e0e0;
+}
+
+.current-reading--low .current-reading__value {
+  color: #e74c3c;
+}
+
+.current-reading--high .current-reading__value {
+  color: #e67e22;
+}
+
+/* ===== BG Chart ===== */
+.bg-chart {
+  background: #222;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.bg-chart__title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0.5rem;
+  color: #ccc;
+}
+
+.chart-tooltip {
+  background: #333;
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  color: #eee;
+}
+
+/* ===== Insights Section ===== */
+.insights {
+  margin-top: 0.5rem;
+}
+
+.insights__title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #ccc;
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid #e74c3c;
+  display: inline-block;
+}
+
+.insights__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+/* ===== Insight Card ===== */
+.insight-card {
+  background: #252525;
+  border-radius: 10px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 100px;
+}
+
+.insight-card__header {
+  display: flex;
+  flex-direction: column;
+}
+
+.insight-card__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ccc;
+}
+
+.insight-card__period {
+  font-size: 0.65rem;
+  color: #666;
+}
+
+.insight-card__body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+/* ===== Insight Values ===== */
+.insight-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.insight-value__big {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.insight-value__unit {
+  font-size: 0.7rem;
+  color: #777;
+}
+
+/* ===== Ring / Donut Chart ===== */
+.insight-value--ring {
+  justify-content: center;
+  width: 100%;
+}
+
+.ring-svg {
+  width: 60px;
+  height: 60px;
+}
+
+.ring-bg {
+  fill: none;
+  stroke: #333;
+  stroke-width: 3;
+}
+
+.ring-fg {
+  fill: none;
+  stroke: #4ade80;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.ring-text {
+  fill: #e0e0e0;
+  font-size: 10px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+/* ===== Quartile Display ===== */
+.quartile-display {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  width: 100%;
+}
+
+.quartile-val {
+  background: #333;
+  padding: 0.3rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  flex: 1;
+}
+
+.quartile-val--mid {
+  background: #444;
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 0.4rem 0.5rem;
+}
+
+/* ===== Range Bar ===== */
+.range-bar {
+  display: flex;
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.range-bar__low {
+  background: #e74c3c;
+  color: #fff;
+  padding: 0.25rem 0;
+  min-width: 0;
+}
+
+.range-bar__in {
+  background: #4ade80;
+  color: #111;
+  padding: 0.25rem 0;
+  min-width: 0;
+}
+
+.range-bar__high {
+  background: #e67e22;
+  color: #fff;
+  padding: 0.25rem 0;
+  min-width: 0;
+}
+
+/* ===== Mini Sparkline ===== */
+.mini-sparkline {
+  width: 100%;
+  height: 50px;
+}
+
+/* ===== Heatmaps ===== */
+.heatmaps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.heatmap-card {
+  background: #252525;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.heatmap-card__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ccc;
+  margin: 0 0 0.5rem 0;
+  text-align: center;
+}
+
+.heatmap-card__toggle {
+  background: #333;
+  border: 1px solid #555;
+  color: #aaa;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.heatmap-card__toggle--active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.heatmap-card__scroll {
+  overflow-x: auto;
+}
+
+.heatmap-svg {
+  display: block;
+}
+
+.heatmap-month {
+  fill: #888;
+  font-size: 11px;
+}
+
+.heatmap-day-label {
+  fill: #888;
+  font-size: 10px;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .dashboard {
+    padding: 1rem;
+  }
+
+  .current-reading__value {
+    font-size: 2.5rem;
+  }
+
+  .insights__grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  }
+
+  .insight-value__big {
+    font-size: 1.4rem;
+  }
+
+  .heatmaps {
+    grid-template-columns: 1fr;
+  }
+}
