@@ -11,10 +11,12 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"health-api/config"
 	"health-api/database"
 	"health-api/handlers"
+	"health-api/middleware"
 )
 
 // APIKeyAuthMiddleware validates the X-API-Key header against a list of allowed keys.
@@ -81,12 +83,17 @@ func main() {
 	corsConfig.AllowHeaders = []string{"*"}
 	r.Use(cors.New(corsConfig))
 
-	// 5. Create Handler instance
+	// 5. Add metrics and rate limiting middleware
+	r.Use(middleware.PrometheusMetrics())
+	r.Use(middleware.RateLimiter(10, 30)) // 10 req/s per IP, burst of 30
+
+	// 6. Create Handler instance
 	h := handlers.NewHandler(db, cfg)
 
 	// 6. Define Routes
-	// Public health check with DB connectivity check
+	// Public endpoints (no auth)
 	r.GET("/health", h.HealthReady)
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Protected routes with API key auth
 	api := r.Group("/")

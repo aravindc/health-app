@@ -1,0 +1,43 @@
+services:
+  health-db:
+    image: postgres:latest
+    networks:
+      - health_be
+    restart: on-failure
+    ports:
+      - "9084:5432"
+    env_file:
+      - ./.env
+    volumes:
+      - "./health-db/pg_data:/var/lib/postgresql/data"
+      # - "./health-db/01-createdb.sql:/docker-entrypoint-initdb.d/01-createdb.sql"
+      - "./health-db/02-createtables.sql:/docker-entrypoint-initdb.d/02-createtables.sql"
+  health-sync:
+    networks:
+      - health_be
+    build: ./health-sync
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      - DB_SSL_MODE=disable
+    depends_on:
+      - health-db
+  health-api:
+    networks:
+      - health_fe
+      - health_be
+    build: ./health-api
+    ports:
+      - "9082:8080"
+    restart: on-failure
+    env_file:
+      - ./.env
+    depends_on:
+      - health-db
+
+networks:
+  health_fe:
+    driver: bridge
+  health_be:
+    driver: bridge

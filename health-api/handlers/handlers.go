@@ -52,7 +52,7 @@ type DataPoint struct {
 
 // XYTimeResponse is for /last12h and /last4h
 type XYTimeResponse struct {
-	X time.Time `json:"x"`
+	X int64     `json:"x"`
 	Y float64   `json:"y"`
 	Z time.Time `json:"z"`
 }
@@ -75,8 +75,8 @@ type QuartResponse struct {
 
 // SparklineResponse is for /7dsparkline and /last24hsparkline
 type SparklineResponse struct {
-	BgTime time.Time `json:"bg_time"`
-	BgMmol float64   `json:"bg_mmol"`
+	BgTime int64   `json:"bg_time"`
+	BgMmol float64 `json:"bg_mmol"`
 }
 
 // --- Helper Functions (Methods) ---

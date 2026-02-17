@@ -122,7 +122,7 @@ CREATE TABLE NS_PART_2027_10 PARTITION OF public.ns_part FOR VALUES FROM ('2027-
 CREATE TABLE NS_PART_2027_11 PARTITION OF public.ns_part FOR VALUES FROM ('2027-11-01T00:00:00') TO ('2027-12-01T00:00:00');
 CREATE TABLE NS_PART_2027_12 PARTITION OF public.ns_part FOR VALUES FROM ('2027-12-01T00:00:00') TO ('2028-01-01T00:00:00');
 
-DROP VIEW public.base_view;
+DROP VIEW IF EXISTS public.base_view;
 CREATE OR REPLACE VIEW public.base_view
 AS SELECT a.bg_time,
     a.bg_datetime,
@@ -151,7 +151,7 @@ AS SELECT a.bg_time,
            FROM ns_part n) a;
 
 
-
+DROP VIEW IF EXISTS public.latest;
 CREATE OR REPLACE VIEW public.latest
 AS SELECT ns_part.ns_time / 1000 AS bg_time,
     ns_part.ns_datetime AS created_at,
@@ -160,6 +160,7 @@ AS SELECT ns_part.ns_time / 1000 AS bg_time,
    FROM ns_part
   ORDER BY ns_part.ns_time DESC;
 
+DROP VIEW IF EXISTS public.daily_avg;
 CREATE OR REPLACE VIEW public.daily_avg
 AS SELECT a.bg_date,
     round(a.bg_sgv / 18::numeric, 2) AS bg_mmol
@@ -169,7 +170,7 @@ AS SELECT a.bg_date,
           GROUP BY (date(ns_part.ns_datetime))
           ORDER BY (date(ns_part.ns_datetime)) DESC) a;
 
-drop view percent_in_range cascade;
+DROP VIEW IF EXISTS public.percent_in_range cascade;
 CREATE OR REPLACE VIEW public.percent_in_range
 AS SELECT a.bg_mmol,
     a.bg_time,
@@ -187,7 +188,7 @@ AS SELECT a.bg_mmol,
             n.ns_datetime AS bg_datetime
            FROM ns_part n) a;
 
-drop view avg_mmol ;
+DROP VIEW IF EXISTS avg_mmol ;
 create or replace view avg_mmol as 
 (
 select '1h' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 3600)*1000 
@@ -211,6 +212,7 @@ union all
 select '90d' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 7776000)*1000
 );
 
+DROP VIEW IF EXISTS quart_mmol;
 create or replace view quart_mmol as
 select 
 round(ns_part.sgv::numeric / 18::numeric, 2) AS bg_mmol,
@@ -220,6 +222,7 @@ WHERE ns_part.ns_time::numeric >= ((EXTRACT(epoch FROM now()) - 86400::numeric) 
 order by 1
 ;
 
+DROP VIEW IF EXISTS quart_mmol_stats;
 create or replace view quart_mmol_stats as
 select '1d' as time_period,
 min(bg_mmol) as min_mmol,
@@ -264,7 +267,7 @@ from
 (select round(ns_part.sgv::numeric / 18::numeric, 2) AS bg_mmol,ntile(4) over (order by ns_part.sgv) as quartile from ns_part WHERE ns_part.ns_time::numeric >= ((EXTRACT(epoch FROM now()) - 7776000::numeric) * 1000::numeric)) a
 ;
 
-drop view daily_tir_strict;
+DROP VIEW IF EXISTS daily_tir_strict;
 CREATE OR REPLACE VIEW public.daily_tir_strict
 AS SELECT a.bg_datetime,
     a.in_range_val,
@@ -281,7 +284,7 @@ AS SELECT a.bg_datetime,
           GROUP BY (pir.bg_datetime::date)
           ORDER BY (pir.bg_datetime::date) DESC) a;
 
-drop view daily_tir_medical;
+DROP VIEW IF EXISTS daily_tir_medical;
 CREATE OR REPLACE VIEW public.daily_tir_medical
 AS SELECT a.bg_datetime,
     a.in_range_val,
@@ -376,14 +379,14 @@ comment on column mysugr.timezone is 'Timezone';
 comment on column mysugr.utc_datetime is 'UTC datetime';
 comment on column mysugr.time is 'Unix timestamp';
 
-drop type if exists insulin_types;
-create type insulin_types as ENUM('LONG_ACTING', 'RAPID_ACTING');
+-- drop type if exists insulin_types;
+-- create type insulin_types as ENUM('LONG_ACTING', 'RAPID_ACTING');
 
-drop table if exists insulin
-(
-    id serial primary key,
-    date_utc_millis bigint not null unique,
-    date_utc timestampz,
-    insulin_type insulin_types,
-    insulin_qty real not null
-)
+-- create table if not exists insulin
+-- (
+--     id serial primary key,
+--     date_utc_millis bigint not null unique,
+--     date_utc timestampz,
+--     insulin_type insulin_types,
+--     insulin_qty real not null
+-- )

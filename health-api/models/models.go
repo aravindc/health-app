@@ -6,7 +6,7 @@ import (
 
 // Python: class Latest(SQLModel, table=True):
 type Latest struct {
-	BgTime    time.Time `gorm:"primaryKey" json:"bg_time"`
+	BgTime    int64     `gorm:"primaryKey" json:"bg_time"`
 	BgMmol    float64   `json:"bg_mmol"`
 	BgTrend   int       `json:"bg_trend"`
 	CreatedAt time.Time `json:"created_at"`
