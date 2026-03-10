@@ -3,6 +3,7 @@ import { useState } from "react";
 interface HeatmapDay {
   date: string; // ISO date string
   value: number;
+  valueMedical?: number;
 }
 
 interface Props {
@@ -145,10 +146,10 @@ export default function Heatmap({ title, data, colorFn, labelFn }: Props) {
                     width={cellSize}
                     height={cellSize}
                     rx={3}
-                    fill={colorFn(day.value, strict)}
+                    fill={colorFn(!strict && day.valueMedical !== undefined ? day.valueMedical : day.value, strict)}
                   />
                   <title>
-                    {day.date}: {labelFn(day.value)}
+                    {day.date}: {labelFn(!strict && day.valueMedical !== undefined ? day.valueMedical : day.value)}
                   </title>
                 </g>
               );
@@ -166,8 +167,8 @@ export function avgColor(mmol: number, strict: boolean): string {
   const high = strict ? 7.0 : 10.0;
 
   if (mmol < low) return "#c0392b";       // red — low
-  if (mmol <= high * 0.85) return "#27ae60"; // green — well in range
-  if (mmol <= high) return "#e67e22";       // orange — near upper
+  if (mmol <= high) return "#27ae60";        // green — in range
+  if (mmol <= high * 1.1) return "#e67e22";  // orange — slightly above
   if (mmol <= high * 1.2) return "#d35400"; // dark orange — above
   return "#c0392b";                         // red — high
 }

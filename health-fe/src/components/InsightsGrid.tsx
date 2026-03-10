@@ -43,11 +43,11 @@ function getQuartileSummary(points: QuartPoint[]) {
   return { q1, q2, q3 };
 }
 
-function countHighsLows(points: DataPoint[]) {
+function countHighsLows(points: DataPoint[], maxMmol: number) {
   let highs = 0;
   let lows = 0;
   for (const p of points) {
-    if (p.mmol > 10.0) highs++;
+    if (p.mmol > maxMmol) highs++;
     else if (p.mmol < 4.0) lows++;
   }
   return { highs, lows };
@@ -72,7 +72,8 @@ export default function InsightsGrid({
 }: Props) {
   const stats = computeStats(dataPoints24h);
   const quarts = getQuartileSummary(quartiles);
-  const { highs, lows } = countHighsLows(dataPoints24h);
+  const { highs, lows } = countHighsLows(dataPoints24h, 10.0);
+  const { highs: highs7, lows: lows7 } = countHighsLows(dataPoints24h, 7.0);
 
   const pirStrict = percentInRange?.[0]?.data?.[0]?.y ?? 0;
 
@@ -81,11 +82,16 @@ export default function InsightsGrid({
     (p) => p.mmol >= 4.0 && p.mmol <= 7.0
   ).length;
 
-  // Low/High/InRange breakdown
+  // Low/High/InRange breakdown (4–10 mmol)
   const totalPts = dataPoints24h.length || 1;
   const lowPct = Math.round((lows / totalPts) * 100);
   const highPct = Math.round((highs / totalPts) * 100);
   const inRangePct = 100 - lowPct - highPct;
+
+  // Strict breakdown (4–7 mmol)
+  const lowPct7 = Math.round((lows7 / totalPts) * 100);
+  const highPct7 = Math.round((highs7 / totalPts) * 100);
+  const inRangePct7 = 100 - lowPct7 - highPct7;
 
   return (
     <div className="insights">
@@ -143,6 +149,20 @@ export default function InsightsGrid({
             </span>
             <span className="range-bar__high" style={{ flex: highPct }}>
               {highPct}%
+            </span>
+          </div>
+        </InsightCard>
+
+        <InsightCard title="Strict Range %" period="24 hours (4–7)">
+          <div className="range-bar">
+            <span className="range-bar__low" style={{ flex: lowPct7 }}>
+              {lowPct7}%
+            </span>
+            <span className="range-bar__in" style={{ flex: inRangePct7 }}>
+              {inRangePct7}%
+            </span>
+            <span className="range-bar__high" style={{ flex: highPct7 }}>
+              {highPct7}%
             </span>
           </div>
         </InsightCard>

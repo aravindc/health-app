@@ -76,6 +76,7 @@ function App() {
   const tirHeatmapData = dailyTir.map((d) => ({
     date: d.bg_date.slice(0, 10),
     value: d.pir_strict,
+    valueMedical: d.pir_medical,
   }));
 
   return (
