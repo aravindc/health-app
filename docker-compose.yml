@@ -47,7 +47,17 @@ services:
     restart: on-failure
     depends_on:
       - health-api
-
+  pgadmin:
+    image: dpage/pgadmin4:9.12
+    networks:
+      - health_be
+    ports:
+      - 9085:80
+    env_file:
+      - .env
+    environment:
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
 networks:
   health_fe:
     driver: bridge
