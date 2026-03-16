@@ -109,6 +109,8 @@ func main() {
 		api.GET("/last4h/:page_num", h.GetLast4h)
 		api.GET("/last12h/:page_num", h.GetLast12h)
 		api.GET("/lastxh/:hours", h.GetLastXh)
+		api.GET("/lastxh/:hours/offset/:offset_hours", h.GetLastXhOffset)
+		api.GET("/daychart/:date", h.GetDayChart)
 		api.GET("/lastreading", h.GetLastReading)
 		api.GET("/dailyavg/:days", h.GetDailyAvg)
 		api.GET("/dailytir/:days", h.GetDailyTir)

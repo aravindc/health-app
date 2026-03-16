@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from "react";
 import {
   ResponsiveContainer,
   ScatterChart,
@@ -8,12 +9,13 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
+import { api } from "../api/client";
 import type { DataPoint } from "../api/types";
 
 interface Props {
-  data: DataPoint[];
   minMmol?: number;
   maxMmol?: number;
+  refreshTick?: number; // increment to trigger a refresh of the current window
 }
 
 interface ChartPoint {
@@ -23,9 +25,27 @@ interface ChartPoint {
   label: string;
 }
 
+/** Returns a YYYY-MM-DD string for today minus `daysBack` days. */
+function dateForOffset(daysBack: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysBack);
+  return d.toISOString().slice(0, 10);
+}
+
 function formatHour(epoch: number): string {
   const d = new Date(epoch);
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function windowLabel(daysBack: number): string {
+  if (daysBack === 0) return "Today";
+  const d = new Date();
+  d.setDate(d.getDate() - daysBack);
+  return d.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function CustomDot(props: Record<string, unknown>) {
@@ -55,10 +75,32 @@ function CustomTooltip({
 }
 
 export default function BgChart({
-  data,
   minMmol = 4.0,
   maxMmol = 10.0,
+  refreshTick = 0,
 }: Props) {
+  const [daysBack, setDaysBack] = useState(0);
+  const [data, setData] = useState<DataPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchWindow = useCallback(async (days: number) => {
+    setLoading(true);
+    try {
+      const points = await api.getDayChart(dateForOffset(days));
+      setData(points);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Refetch when day changes or parent triggers a refresh (tick changes)
+  useEffect(() => {
+    fetchWindow(daysBack);
+  }, [daysBack, refreshTick, fetchWindow]);
+
+  const goBack = () => setDaysBack((d) => d + 1);
+  const goForward = () => setDaysBack((d) => Math.max(0, d - 1));
+
   const chartData: ChartPoint[] = data.map((d) => ({
     time: d.epoch,
     mmol: d.mmol,
@@ -68,7 +110,27 @@ export default function BgChart({
 
   return (
     <div className="bg-chart">
-      <h2 className="bg-chart__title">Today</h2>
+      <div className="bg-chart__header">
+        <button
+          className="bg-chart__nav"
+          onClick={goBack}
+          title="Previous 24 hours"
+        >
+          ‹
+        </button>
+        <h2 className="bg-chart__title">
+          {windowLabel(daysBack)}
+          {loading && <span className="bg-chart__loading"> …</span>}
+        </h2>
+        <button
+          className="bg-chart__nav"
+          onClick={goForward}
+          disabled={daysBack === 0}
+          title="Next 24 hours"
+        >
+          ›
+        </button>
+      </div>
       <ResponsiveContainer width="100%" height={300}>
         <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
           <CartesianGrid
@@ -102,14 +164,8 @@ export default function BgChart({
             strokeDasharray="4 4"
             strokeWidth={1.5}
           />
-          <Tooltip
-            content={<CustomTooltip />}
-            cursor={false}
-          />
-          <Scatter
-            data={chartData}
-            shape={<CustomDot />}
-          />
+          <Tooltip content={<CustomTooltip />} cursor={false} />
+          <Scatter data={chartData} shape={<CustomDot />} />
         </ScatterChart>
       </ResponsiveContainer>
     </div>

@@ -84,11 +84,41 @@
   margin-bottom: 1.5rem;
 }
 
+.bg-chart__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
 .bg-chart__title {
   font-size: 1.1rem;
   font-weight: 600;
-  margin: 0 0 0.5rem 0.5rem;
+  margin: 0;
   color: #ccc;
+  flex: 1;
+  text-align: center;
+}
+
+.bg-chart__nav {
+  background: none;
+  border: 1px solid #444;
+  color: #ccc;
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.bg-chart__nav:hover:not(:disabled) {
+  background: #333;
+  color: #fff;
+}
+
+.bg-chart__nav:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .chart-tooltip {

@@ -22,6 +22,9 @@ export const api = {
   getLastReading: () => fetchJSON<LastReading>("/lastreading"),
   getLast24hSparkline: () => fetchJSON<SparklinePoint[]>("/last24hsparkline"),
   getLastXh: (hours: number) => fetchJSON<DataPoint[]>(`/lastxh/${hours}`),
+  getLastXhOffset: (hours: number, offsetHours: number) =>
+    fetchJSON<DataPoint[]>(`/lastxh/${hours}/offset/${offsetHours}`),
+  getDayChart: (date: string) => fetchJSON<DataPoint[]>(`/daychart/${date}`),
   getAvgMmol: (period: string) => fetchJSON<AvgMmol>(`/avgmmol/${period}`),
   getQuart: (days: number) => fetchJSON<QuartPoint[]>(`/quart/${days}`),
   getGmi: (days: number) => fetchJSON<GmiResponse>(`/gmi/${days}`),
