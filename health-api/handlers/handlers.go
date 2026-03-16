@@ -449,6 +449,18 @@ func (h *Handler) GetDayChart(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
+// GetFirstDate (GET /firstdate)
+// Returns the earliest calendar date (YYYY-MM-DD) that has data in ns_part.
+func (h *Handler) GetFirstDate(c *gin.Context) {
+	var earliest time.Time
+	row := h.DB.Raw("SELECT MIN(ns_datetime) FROM ns_part").Row()
+	if err := row.Scan(&earliest); err != nil || earliest.IsZero() {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "No data found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"date": earliest.Local().Format("2006-01-02")})
+}
+
 // GetTimeInRange (GET /timeinrange/:hours)
 func (h *Handler) GetTimeInRange(c *gin.Context) {
 	hours, err := strconv.Atoi(c.Param("hours"))

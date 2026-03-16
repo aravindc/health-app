@@ -25,6 +25,7 @@ export const api = {
   getLastXhOffset: (hours: number, offsetHours: number) =>
     fetchJSON<DataPoint[]>(`/lastxh/${hours}/offset/${offsetHours}`),
   getDayChart: (date: string) => fetchJSON<DataPoint[]>(`/daychart/${date}`),
+  getFirstDate: () => fetchJSON<{ date: string }>("/firstdate"),
   getAvgMmol: (period: string) => fetchJSON<AvgMmol>(`/avgmmol/${period}`),
   getQuart: (days: number) => fetchJSON<QuartPoint[]>(`/quart/${days}`),
   getGmi: (days: number) => fetchJSON<GmiResponse>(`/gmi/${days}`),

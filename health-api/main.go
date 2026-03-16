@@ -111,6 +111,7 @@ func main() {
 		api.GET("/lastxh/:hours", h.GetLastXh)
 		api.GET("/lastxh/:hours/offset/:offset_hours", h.GetLastXhOffset)
 		api.GET("/daychart/:date", h.GetDayChart)
+		api.GET("/firstdate", h.GetFirstDate)
 		api.GET("/lastreading", h.GetLastReading)
 		api.GET("/dailyavg/:days", h.GetDailyAvg)
 		api.GET("/dailytir/:days", h.GetDailyTir)

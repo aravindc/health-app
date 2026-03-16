@@ -74,14 +74,29 @@ function CustomTooltip({
   );
 }
 
+/** Days between two YYYY-MM-DD date strings. */
+function daysBetween(earlier: string, later: string): number {
+  return Math.round(
+    (new Date(later).getTime() - new Date(earlier).getTime()) / 86_400_000
+  );
+}
+
 export default function BgChart({
   minMmol = 4.0,
   maxMmol = 10.0,
   refreshTick = 0,
 }: Props) {
   const [daysBack, setDaysBack] = useState(0);
+  const [maxDaysBack, setMaxDaysBack] = useState<number | null>(null);
   const [data, setData] = useState<DataPoint[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Fetch the earliest available date once on mount
+  useEffect(() => {
+    api.getFirstDate().then(({ date }) => {
+      setMaxDaysBack(daysBetween(date, dateForOffset(0)));
+    }).catch(() => {/* silently ignore — buttons just won't be bounded */});
+  }, []);
 
   const fetchWindow = useCallback(async (days: number) => {
     setLoading(true);
@@ -98,8 +113,10 @@ export default function BgChart({
     fetchWindow(daysBack);
   }, [daysBack, refreshTick, fetchWindow]);
 
-  const goBack = () => setDaysBack((d) => d + 1);
+  const goFirst = () => setDaysBack(maxDaysBack ?? daysBack);
+  const goBack = () => setDaysBack((d) => (maxDaysBack !== null ? Math.min(d + 1, maxDaysBack) : d + 1));
   const goForward = () => setDaysBack((d) => Math.max(0, d - 1));
+  const goLatest = () => setDaysBack(0);
 
   const chartData: ChartPoint[] = data.map((d) => ({
     time: d.epoch,
@@ -113,8 +130,17 @@ export default function BgChart({
       <div className="bg-chart__header">
         <button
           className="bg-chart__nav"
+          onClick={goFirst}
+          disabled={maxDaysBack !== null && daysBack >= maxDaysBack}
+          title="First date"
+        >
+          «
+        </button>
+        <button
+          className="bg-chart__nav"
           onClick={goBack}
-          title="Previous 24 hours"
+          disabled={maxDaysBack !== null && daysBack >= maxDaysBack}
+          title="Previous day"
         >
           ‹
         </button>
@@ -126,9 +152,17 @@ export default function BgChart({
           className="bg-chart__nav"
           onClick={goForward}
           disabled={daysBack === 0}
-          title="Next 24 hours"
+          title="Next day"
         >
           ›
+        </button>
+        <button
+          className="bg-chart__nav"
+          onClick={goLatest}
+          disabled={daysBack === 0}
+          title="Latest (today)"
+        >
+          »
         </button>
       </div>
       <ResponsiveContainer width="100%" height={300}>
