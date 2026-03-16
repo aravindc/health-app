@@ -23,6 +23,17 @@ services:
       - DB_SSL_MODE=disable
     depends_on:
       - health-db
+  health-mongo-sync:
+    networks:
+      - health_be
+    build: ./health-mongo-sync
+    restart: "no"           # run once; use a one-shot restart policy
+    env_file:
+      - ./.env
+    environment:
+      - DB_SSL_MODE=disable
+    depends_on:
+      - health-db
   health-api:
     networks:
       - health_fe
