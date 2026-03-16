@@ -31,6 +31,7 @@ function App() {
   const [dailyAvg, setDailyAvg] = useState<DailyAvg[]>([]);
   const [dailyTir, setDailyTir] = useState<DailyTir[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [chartRefreshTick, setChartRefreshTick] = useState(0);
 
   const fetchData = useCallback(async () => {
     try {
@@ -57,6 +58,7 @@ function App() {
       if (dt.status === "fulfilled") setDailyTir(dt.value);
 
       setError(null);
+      setChartRefreshTick((t) => t + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch data");
     }
@@ -89,7 +91,7 @@ function App() {
       {error && <div className="dashboard__error">{error}</div>}
 
       <main className="dashboard__main">
-        <BgChart data={dataPoints24h} />
+        <BgChart refreshTick={chartRefreshTick} />
 
         <InsightsGrid
           avgMmol24h={avgMmol24h}

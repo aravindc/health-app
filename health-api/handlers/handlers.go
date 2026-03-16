@@ -87,31 +87,26 @@ func round(val float64, precision int) float64 {
 	return math.Round(val*p) / p
 }
 
-// getData is the Go equivalent of your Python `getData` function
-func (h *Handler) getData(hours int) ([]DataPoint, error) {
-	// Parse config values
+// getDataInWindow fetches DataPoints in [from, to) time window
+func (h *Handler) getDataInWindow(from, to time.Time) ([]DataPoint, error) {
 	minMmol, err := strconv.ParseFloat(h.Cfg.MinMmol, 64)
 	if err != nil {
-		slog.Error("Failed to parse MIN_MMOL", "error", err)
 		return nil, err
 	}
 	strictMaxMmol, err := strconv.ParseFloat(h.Cfg.StrictMaxMmol, 64)
 	if err != nil {
-		slog.Error("Failed to parse STRICT_MAX_MMOL", "error", err)
 		return nil, err
 	}
 	medicalMaxMmol, err := strconv.ParseFloat(h.Cfg.MedicalMaxMmol, 64)
 	if err != nil {
-		slog.Error("Failed to parse MEDICAL_MAX_MMOL", "error", err)
 		return nil, err
 	}
 
 	var results []models.NsPart
 	latResponse := []DataPoint{}
 
-	startTime := time.Now().Add(-time.Duration(hours) * time.Hour)
 	tx := h.DB.Select("ns_time", "sgv").
-		Where("ns_datetime >= ?", startTime).
+		Where("ns_datetime >= ? AND ns_datetime < ?", from, to).
 		Order("ns_time desc").
 		Find(&results)
 
@@ -119,7 +114,6 @@ func (h *Handler) getData(hours int) ([]DataPoint, error) {
 		return nil, tx.Error
 	}
 
-	// Process results
 	for _, result := range results {
 		mmol := round(float64(result.Sgv)/SgvToMmolFactor, 1)
 		inRange := mmol >= minMmol && mmol <= strictMaxMmol
@@ -148,6 +142,12 @@ func (h *Handler) getData(hours int) ([]DataPoint, error) {
 	}
 
 	return latResponse, nil
+}
+
+// getData is the Go equivalent of your Python `getData` function
+func (h *Handler) getData(hours int) ([]DataPoint, error) {
+	now := time.Now()
+	return h.getDataInWindow(now.Add(-time.Duration(hours)*time.Hour), now.Add(time.Minute))
 }
 
 // --- Endpoint Handlers ---
@@ -390,6 +390,63 @@ func (h *Handler) GetLastXh(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, latResponse)
+}
+
+// GetLastXhOffset (GET /lastxh/:hours/offset/:offset_hours)
+// Returns data for a window of `hours` ending `offset_hours` ago.
+func (h *Handler) GetLastXhOffset(c *gin.Context) {
+	hours, err := strconv.Atoi(c.Param("hours"))
+	if err != nil || hours < 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Wrong number of hours"})
+		return
+	}
+	offsetHours, err := strconv.Atoi(c.Param("offset_hours"))
+	if err != nil || offsetHours < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Wrong offset_hours"})
+		return
+	}
+
+	now := time.Now()
+	to := now.Add(-time.Duration(offsetHours) * time.Hour)
+	from := to.Add(-time.Duration(hours) * time.Hour)
+
+	data, err := h.getDataInWindow(from, to)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get data"})
+		return
+	}
+	c.JSON(http.StatusOK, data)
+}
+
+// GetDayChart (GET /daychart/:date)
+// Returns data for the full calendar day given by :date (YYYY-MM-DD, local time).
+// For today, the window ends at the current time; for past days it ends at 23:59:59.
+func (h *Handler) GetDayChart(c *gin.Context) {
+	dateStr := c.Param("date")
+	loc := time.Local
+	day, err := time.ParseInLocation("2006-01-02", dateStr, loc)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Invalid date, expected YYYY-MM-DD"})
+		return
+	}
+
+	from := day // 00:00:00 of the requested day
+	now := time.Now()
+	todayMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+
+	var to time.Time
+	if !day.Before(todayMidnight) {
+		to = now
+	} else {
+		to = day.Add(24*time.Hour - time.Second) // 23:59:59
+	}
+
+	data, err := h.getDataInWindow(from, to)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get data"})
+		return
+	}
+	c.JSON(http.StatusOK, data)
 }
 
 // GetTimeInRange (GET /timeinrange/:hours)
