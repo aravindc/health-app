@@ -670,6 +670,12 @@ func (h *Handler) GetLastReading(c *gin.Context) {
 	})
 }
 
+// validInsulinTypes mirrors the insulin_types enum defined in health-db.
+var validInsulinTypes = map[string]bool{
+	"LONG_ACTING":  true,
+	"RAPID_ACTING": true,
+}
+
 // PutInsulin (PUT /insulin)
 func (h *Handler) PutInsulin(c *gin.Context) {
 	var insulinData models.Insulin
@@ -678,6 +684,19 @@ func (h *Handler) PutInsulin(c *gin.Context) {
 	if err := c.ShouldBindJSON(&insulinData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
 		return
+	}
+
+	if !validInsulinTypes[insulinData.InsulinType] {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "insulin_type must be one of LONG_ACTING, RAPID_ACTING"})
+		return
+	}
+	if insulinData.InsulinQty <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "insulin_qty must be greater than 0"})
+		return
+	}
+	if insulinData.DateUtcMillis == 0 {
+		insulinData.DateUtc = time.Now().UTC()
+		insulinData.DateUtcMillis = insulinData.DateUtc.UnixMilli()
 	}
 
 	tx := h.DB.Create(&insulinData)
