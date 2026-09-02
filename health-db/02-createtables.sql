@@ -390,14 +390,15 @@ comment on column mysugr.timezone is 'Timezone';
 comment on column mysugr.utc_datetime is 'UTC datetime';
 comment on column mysugr.time is 'Unix timestamp';
 
--- drop type if exists insulin_types;
--- create type insulin_types as ENUM('LONG_ACTING', 'RAPID_ACTING');
+drop table if exists insulin;
+drop type if exists insulin_types;
+create type insulin_types as ENUM('LONG_ACTING', 'RAPID_ACTING');
 
--- create table if not exists insulin
--- (
---     id serial primary key,
---     date_utc_millis bigint not null unique,
---     date_utc timestampz,
---     insulin_type insulin_types,
---     insulin_qty real not null
--- )
+create table insulin
+(
+    id serial primary key,
+    date_utc_millis bigint not null unique,
+    date_utc timestamptz,
+    insulin_type insulin_types,
+    insulin_qty real not null
+);
