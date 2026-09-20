@@ -11,6 +11,7 @@ A personal health monitoring dashboard for tracking continuous glucose monitor (
 - Daily average and quartile distribution analytics
 - 120-day heatmaps for daily averages and TIR percentages
 - Historical gap-fill from a Nightscout MongoDB backend
+- Hourly insulin (bolus + basal) sync from a Tandem Source insulin pump
 - Prometheus metrics endpoint for monitoring
 
 ## Architecture
@@ -21,6 +22,7 @@ health-api/          Go REST API (Gin)
 health-sync/         Go background sync service (Dexcom → PostgreSQL)
 health-mongo-sync/   Go one-shot gap-fill service (MongoDB → PostgreSQL)
 health-db/           PostgreSQL schema and migrations
+tandemdata/          Go CLI + tandemsync service (Tandem Source → PostgreSQL insulin data)
 ```
 
 ## Stack
@@ -61,6 +63,24 @@ docker compose run --rm health-mongo-sync
 ```
 
 This is fully idempotent — re-running it is safe and will only insert records that are not already in Postgres.
+
+### Syncing insulin data from a Tandem pump
+
+If you have a Tandem insulin pump (Tandem Source account), the `tandemsync`
+service logs in every hour and upserts recent bolus and basal-rate data into
+the `tandem_bolus` / `tandem_basal` tables. Set `TANDEM_USERNAME` /
+`TANDEM_PASSWORD` in `tandemdata/.env` (see
+[`tandemdata/.env.example`](tandemdata/.env.example)), then:
+
+```bash
+docker compose up -d tandemsync
+```
+
+It's fully idempotent — each cycle re-fetches a small lookback window and
+upserts, so a missed cycle or restart doesn't create duplicates or lose
+data. See [`tandemdata/README.md`](tandemdata/README.md#tandemsync--hourly-insulin-sync-into-health-db)
+for details, including the standalone `tandemdata` CLI this service is built
+on top of (for one-off downloads/backfills of the full pump event history).
 
 ## Configuration
 
