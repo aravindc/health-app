@@ -4,6 +4,7 @@ health-api
 # Environment files
 .env
 .env.*
+!.env.example
 
 # IDE
 .idea/

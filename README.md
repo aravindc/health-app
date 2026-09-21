@@ -40,7 +40,7 @@ tandemdata/          Go CLI + tandemsync service (Tandem Source → PostgreSQL i
 
 **Prerequisites:** Docker and Docker Compose.
 
-1. Fill in your credentials in `.env` (see [Configuration](#configuration) below).
+1. Fill in your credentials in each service's own `.env` file (see [Configuration](#configuration) below).
 2. Start all services:
 
 ```bash
@@ -56,7 +56,7 @@ docker compose up -d
 
 ### Filling historical gaps from MongoDB
 
-If you have a Nightscout MongoDB backend, run the one-shot gap-fill service after setting the `MONGO_*` variables in `.env`:
+If you have a Nightscout MongoDB backend, run the one-shot gap-fill service after setting the `MONGO_*` variables in `health-mongo-sync/.env`:
 
 ```bash
 docker compose run --rm health-mongo-sync
@@ -84,49 +84,38 @@ on top of (for one-off downloads/backfills of the full pump event history).
 
 ## Configuration
 
-All configuration lives in `.env` in the project root.
+Each service reads its own `.env` file from its own directory — there is no
+longer one shared root `.env`. This means `POSTGRES_HOST/PORT/DB/USER/PASSWORD`
+are duplicated across every `.env` that talks to the database (`health-db`,
+`health-sync`, `health-mongo-sync`, `health-api`, and `tandemdata` via
+`HEALTHDB_URL`), but it keeps each container from being handed secrets it
+has no reason to see — e.g. `health-api` never sees your Dexcom password,
+and `health-sync` never sees pgAdmin's. If you rotate the database password,
+update it in all of those files.
 
-```env
-# Database
-POSTGRES_HOST=health-db
-POSTGRES_PORT=5432
-POSTGRES_DB=health
-POSTGRES_USER=admin
-POSTGRES_PASSWORD=your_secure_password
+Copy each `.env.example` to `.env` in the same directory and fill it in:
 
-# Dexcom Share API
-BRIDGE_SERVER=shareous1.dexcom.com   # use "US" for US Dexcom accounts
-BRIDGE_USER=your_dexcom_email
-BRIDGE_PASS=your_dexcom_password
-APPLICATION_ID=your_dexcom_app_id
+| File | Used by | Holds |
+|---|---|---|
+| `health-db/.env` | `health-db` | `POSTGRES_*` |
+| `health-sync/.env` | `health-sync` | `POSTGRES_*`, `BRIDGE_*`, `APPLICATION_ID`, sync settings |
+| `health-mongo-sync/.env` | `health-mongo-sync` | `POSTGRES_*`, `MONGO_*` |
+| `health-api/.env` | `health-api` | `POSTGRES_*`, glucose ranges, `API_KEYS` |
+| `pgadmin/.env` | `pgadmin` | `PGADMIN_DEFAULT_EMAIL/PASSWORD` |
+| `tandemdata/.env` | `tandemsync` | `TANDEM_USERNAME/PASSWORD`, `HEALTHDB_URL` (health-db creds again, as a connection URL) |
 
-# Dexcom sync settings
-SYNC_INTERVAL_SECONDS=60
-BG_QUERY_MINUTES=1440
-RECORD_COUNT=288
-
-# Glucose target ranges (mmol/L)
-MIN_MMOL=4.0
-STRICT_MAX_MMOL=7.0
-MEDICAL_MAX_MMOL=10.0
-
-# Environment
-NS_ENV=development
-VITE_API_URL=http://localhost:9082
-
-# pgAdmin
-PGADMIN_DEFAULT_EMAIL=admin@example.com
-PGADMIN_DEFAULT_PASSWORD=your_pgadmin_password
-
-# Optional API key auth (comma-separated)
-# API_KEYS=key1,key2
-
-# MongoDB gap-fill (health-mongo-sync) — uncomment to enable
-# MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/?retryWrites=true&w=majority
-# MONGO_DB=nightscout
-# MONGO_COLLECTION=entries
-# MONGO_SYNC_LOOKBACK_DAYS=90   # omit to sync all history back to 2020-01-01
+```bash
+for d in health-db health-sync health-mongo-sync health-api pgadmin; do
+  cp "$d/.env.example" "$d/.env"
+done
+cp tandemdata/.env.example tandemdata/.env
 ```
+
+Then edit each `.env` — see that directory's `.env.example` for the full,
+commented variable list (Dexcom Share credentials, glucose target ranges,
+MongoDB gap-fill settings, etc. are documented there rather than repeated
+here). `VITE_API_URL` is not read from any `.env`; it's a docker-compose
+build arg for `health-fe` (see `docker-compose.yml`).
 
 ## API Endpoints
 
