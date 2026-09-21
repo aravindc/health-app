@@ -13,6 +13,7 @@ services:
       # - "./health-db/01-createdb.sql:/docker-entrypoint-initdb.d/01-createdb.sql"
       - "./health-db/02-createtables.sql:/docker-entrypoint-initdb.d/02-createtables.sql"
       - "./health-db/04-add-tandem-insulin-tables.sql:/docker-entrypoint-initdb.d/04-add-tandem-insulin-tables.sql"
+      - "./health-db/05-add-tandem-cgm-table.sql:/docker-entrypoint-initdb.d/05-add-tandem-cgm-table.sql"
   health-sync:
     networks:
       - health_be
@@ -41,13 +42,14 @@ services:
     networks:
       - health_be
     build:
-      context: ./tandemdata
+      context: ./health-tandem-sync
       dockerfile: Dockerfile.tandemsync
     restart: always
     env_file:
-      - ./tandemdata/.env
+      - ./.env
+      - ./health-tandem-sync/.env
     environment:
-      - HEALTHDB_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@health-db:5432/${POSTGRES_DB}?sslmode=disable
+      - DB_SSL_MODE=disable
       - SYNC_INTERVAL_SECONDS=3600
     depends_on:
       - health-db

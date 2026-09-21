@@ -30,6 +30,13 @@ $$;
 -- delivery) has completed_at / insulin_delivered left null;
 -- completion_status distinguishes a completed delivery (3) from other
 -- outcomes reported by the pump.
+--
+-- A bolus is often a mix of a food (carb-covering) component and a
+-- correction (high-BG-covering) component delivered together as one dose;
+-- food_bolus_size + correction_bolus_size sum to insulin_requested
+-- (eventCode 66, BolusRequestedSplit). correction_included and carb_ratio
+-- come from eventCode 64 (BolusRequestedCarb) and explain why a correction
+-- was applied.
 create table if not exists tandem_bolus
 (
     id                    bigserial primary key,
@@ -40,19 +47,35 @@ create table if not exists tandem_bolus
     completed_at          timestamptz,
     insulin_requested     real,
     insulin_delivered     real,
+    food_bolus_size       real,
+    correction_bolus_size real,
+    correction_included   boolean,
     carb_amount           real,
+    carb_ratio            real,
     bg                    real,
     completion_status     smallint,
     event_properties      jsonb not null default '{}'::jsonb,
     unique (device_assignment_id, bolus_id)
 );
 
+-- Adds the food/correction split columns for a tandem_bolus table created by
+-- an earlier version of this file, before they existed. Safe to run
+-- multiple times and safe on a fresh table (all no-ops there).
+alter table tandem_bolus add column if not exists food_bolus_size real;
+alter table tandem_bolus add column if not exists correction_bolus_size real;
+alter table tandem_bolus add column if not exists correction_included boolean;
+alter table tandem_bolus add column if not exists carb_ratio real;
+
 comment on table tandem_bolus is 'Tandem pump bolus deliveries, merged from BolusRequested*/BolusCompleted pump-log events';
 comment on column tandem_bolus.bolus_id is 'Pump-assigned bolus id (eventProperties.bolusId), unique per device_assignment_id';
 comment on column tandem_bolus.requested_at is 'estimatedDateTime of the BolusRequested* event';
 comment on column tandem_bolus.completed_at is 'estimatedDateTime of the BolusCompleted event';
-comment on column tandem_bolus.insulin_requested is 'Units of insulin requested (eventProperties.insulinRequested / bolusSize)';
+comment on column tandem_bolus.insulin_requested is 'Units of insulin requested (eventProperties.insulinRequested / bolusSize / totalBolusSize)';
 comment on column tandem_bolus.insulin_delivered is 'Units of insulin actually delivered (eventProperties.insulinDelivered), null until completed';
+comment on column tandem_bolus.food_bolus_size is 'Portion of insulin_requested covering carbs (eventProperties.foodBolusSize)';
+comment on column tandem_bolus.correction_bolus_size is 'Portion of insulin_requested covering high BG (eventProperties.correctionBolusSize)';
+comment on column tandem_bolus.correction_included is 'Whether a correction was applied at all (eventProperties.correctionBolusIncluded)';
+comment on column tandem_bolus.carb_ratio is 'Carb ratio used for this bolus (eventProperties.carbRatio)';
 comment on column tandem_bolus.completion_status is 'Raw completionStatus from the BolusCompleted event (3 = completed normally)';
 comment on column tandem_bolus.event_properties is 'Raw eventProperties merged from the contributing events, for fields not broken out into columns';
 
