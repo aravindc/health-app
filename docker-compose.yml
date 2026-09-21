@@ -7,7 +7,7 @@ services:
     ports:
       - "9084:5432"
     env_file:
-      - ./health-db/.env
+      - ./.env
     volumes:
       - "./health-db/pg_data:/var/lib/postgresql/data"
       # - "./health-db/01-createdb.sql:/docker-entrypoint-initdb.d/01-createdb.sql"
@@ -19,6 +19,7 @@ services:
     build: ./health-sync
     restart: always
     env_file:
+      - ./.env
       - ./health-sync/.env
     environment:
       - DB_SSL_MODE=disable
@@ -30,6 +31,7 @@ services:
     build: ./health-mongo-sync
     restart: "no"           # run once; use a one-shot restart policy
     env_file:
+      - ./.env
       - ./health-mongo-sync/.env
     environment:
       - DB_SSL_MODE=disable
@@ -44,10 +46,8 @@ services:
     restart: always
     env_file:
       - ./tandemdata/.env
-    # HEALTHDB_URL (postgres://user:pass@health-db:5432/health?sslmode=disable)
-    # is read from tandemdata/.env, not interpolated from the root — see that
-    # file's HEALTHDB_URL comment for the exact value to set.
     environment:
+      - HEALTHDB_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@health-db:5432/${POSTGRES_DB}?sslmode=disable
       - SYNC_INTERVAL_SECONDS=3600
     depends_on:
       - health-db
@@ -60,6 +60,7 @@ services:
       - "9082:8080"
     restart: on-failure
     env_file:
+      - ./.env
       - ./health-api/.env
     depends_on:
       - health-db

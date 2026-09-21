@@ -84,38 +84,46 @@ on top of (for one-off downloads/backfills of the full pump event history).
 
 ## Configuration
 
-Each service reads its own `.env` file from its own directory — there is no
-longer one shared root `.env`. This means `POSTGRES_HOST/PORT/DB/USER/PASSWORD`
-are duplicated across every `.env` that talks to the database (`health-db`,
-`health-sync`, `health-mongo-sync`, `health-api`, and `tandemdata` via
-`HEALTHDB_URL`), but it keeps each container from being handed secrets it
-has no reason to see — e.g. `health-api` never sees your Dexcom password,
-and `health-sync` never sees pgAdmin's. If you rotate the database password,
-update it in all of those files.
+Config is split across a root `.env` plus one `.env` per service directory,
+each loaded via `env_file:` in `docker-compose.yml` (Compose supports a list
+there, and later files win on key collisions).
 
-Copy each `.env.example` to `.env` in the same directory and fill it in:
+The root `.env` holds only the shared database credentials
+(`POSTGRES_HOST/PORT/DB/USER/PASSWORD`), since `health-db`, `health-sync`,
+`health-mongo-sync`, and `health-api` all connect to the same Postgres
+instance with the same login. That way the DB password lives in exactly one
+file, not four. Every other secret — Dexcom credentials, MongoDB URI,
+pgAdmin password, Tandem credentials — stays in its own service's `.env`,
+so e.g. `health-api` never sees your Dexcom password and `pgadmin` never
+sees the Mongo URI.
 
 | File | Used by | Holds |
 |---|---|---|
-| `health-db/.env` | `health-db` | `POSTGRES_*` |
-| `health-sync/.env` | `health-sync` | `POSTGRES_*`, `BRIDGE_*`, `APPLICATION_ID`, sync settings |
-| `health-mongo-sync/.env` | `health-mongo-sync` | `POSTGRES_*`, `MONGO_*` |
-| `health-api/.env` | `health-api` | `POSTGRES_*`, glucose ranges, `API_KEYS` |
+| `.env` (root) | `health-db`, `health-sync`, `health-mongo-sync`, `health-api`, `tandemsync` (indirectly, see below) | `POSTGRES_*` |
+| `health-sync/.env` | `health-sync` | `BRIDGE_*`, `APPLICATION_ID`, sync settings |
+| `health-mongo-sync/.env` | `health-mongo-sync` | `MONGO_*` |
+| `health-api/.env` | `health-api` | Glucose ranges, `API_KEYS` |
 | `pgadmin/.env` | `pgadmin` | `PGADMIN_DEFAULT_EMAIL/PASSWORD` |
-| `tandemdata/.env` | `tandemsync` | `TANDEM_USERNAME/PASSWORD`, `HEALTHDB_URL` (health-db creds again, as a connection URL) |
+| `tandemdata/.env` | `tandemsync` | `TANDEM_USERNAME/PASSWORD` only — `HEALTHDB_URL` is built by docker-compose itself from the root `.env`'s `POSTGRES_*`, not duplicated here |
+
+`health-db` itself has no per-service `.env` file — the root `.env` is all
+it needs.
+
+Copy each `.env.example` to `.env` and fill it in:
 
 ```bash
-for d in health-db health-sync health-mongo-sync health-api pgadmin; do
+cp .env.example .env
+for d in health-sync health-mongo-sync health-api pgadmin; do
   cp "$d/.env.example" "$d/.env"
 done
 cp tandemdata/.env.example tandemdata/.env
 ```
 
-Then edit each `.env` — see that directory's `.env.example` for the full,
-commented variable list (Dexcom Share credentials, glucose target ranges,
-MongoDB gap-fill settings, etc. are documented there rather than repeated
-here). `VITE_API_URL` is not read from any `.env`; it's a docker-compose
-build arg for `health-fe` (see `docker-compose.yml`).
+See each `.env.example` for the full, commented variable list — Dexcom
+Share credentials, glucose target ranges, MongoDB gap-fill settings, etc.
+are documented there rather than repeated here. `VITE_API_URL` is not read
+from any `.env`; it's a docker-compose build arg for `health-fe` (see
+`docker-compose.yml`).
 
 ## API Endpoints
 
