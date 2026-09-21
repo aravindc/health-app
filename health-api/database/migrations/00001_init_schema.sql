@@ -1,3 +1,7 @@
+-- +goose Up
+-- Base schema, converted from the former health-db/02-createtables.sql
+-- (previously applied once via Postgres's docker-entrypoint-initdb.d on a
+-- fresh data volume; now a tracked goose migration instead).
 drop table if exists sugarmate;
 drop type if exists valid_trend;
 
@@ -182,24 +186,24 @@ AS SELECT a.bg_mmol,
         CASE
             WHEN a.bg_mmol < 4::double precision OR a.bg_mmol > 10::double precision THEN false
             ELSE true
-        END AS in_range_medical        
+        END AS in_range_medical
    FROM ( SELECT n.sgv::double precision / 18::double precision AS bg_mmol,
             n.ns_time AS bg_time,
             n.ns_datetime AS bg_datetime
            FROM ns_part n) a;
 
 DROP VIEW IF EXISTS avg_mmol ;
-create or replace view avg_mmol as 
+create or replace view avg_mmol as
 (
-select '1h' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 3600)*1000 
+select '1h' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 3600)*1000
 union all
-select '3h' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 10800)*1000 
+select '3h' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 10800)*1000
 union all
-select '6h' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 21600)*1000 
+select '6h' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 21600)*1000
 union all
-select '12h' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 43200)*1000 
+select '12h' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 43200)*1000
 union all
-select '1d' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 86400)*1000 
+select '1d' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 86400)*1000
 union all
 select '7d' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where ns_time >= (extract(epoch from now()) - 604800)*1000
 union all
@@ -214,7 +218,7 @@ select '90d' as time_period,round(avg(sgv)/18,2) as bg_mmol from ns_part where n
 
 DROP VIEW IF EXISTS quart_mmol;
 create or replace view quart_mmol as
-select 
+select
 round(ns_part.sgv::numeric / 18::numeric, 2) AS bg_mmol,
 ntile(4) over (order by ns_part.sgv) as quartile
 from ns_part
@@ -312,10 +316,11 @@ AS SELECT s.bg_datetime AS bg_date,
    FROM daily_tir_strict s
    JOIN daily_tir_medical m ON s.bg_datetime = m.bg_datetime;
 
+-- +goose StatementBegin
 create or replace function create_ns_part_row()
-returns trigger 
+returns trigger
 language PLPGSQL
-as 
+as
 $$
 begin
 	insert into ns_part(sgv,ns_time,ns_datetime,trend,utcoffset,systime)
@@ -323,6 +328,7 @@ begin
 return new;
 end
 $$;
+-- +goose StatementEnd
 
 
 create trigger nightscoutdb_ins after insert on public.nightscoutdb for each row execute procedure create_ns_part_row();
@@ -332,7 +338,7 @@ create table if not exists mysugr
 (
     id serial primary key ,
     local_datetime timestamp,
-    tags text,    
+    tags text,
     bgreading_mmol  float,
     insulin_inj_units_pen float,
     basal_inj_units float,
@@ -402,3 +408,24 @@ create table insulin
     insulin_type insulin_types,
     insulin_qty real not null
 );
+
+-- +goose Down
+DROP TRIGGER IF EXISTS nightscoutdb_ins ON public.nightscoutdb;
+DROP FUNCTION IF EXISTS create_ns_part_row();
+DROP VIEW IF EXISTS public.daily_tir;
+DROP VIEW IF EXISTS public.daily_tir_medical;
+DROP VIEW IF EXISTS public.daily_tir_strict;
+DROP VIEW IF EXISTS quart_mmol_stats;
+DROP VIEW IF EXISTS quart_mmol;
+DROP VIEW IF EXISTS avg_mmol;
+DROP VIEW IF EXISTS public.percent_in_range CASCADE;
+DROP VIEW IF EXISTS public.daily_avg;
+DROP VIEW IF EXISTS public.latest;
+DROP VIEW IF EXISTS public.base_view;
+DROP TABLE IF EXISTS insulin;
+DROP TYPE IF EXISTS insulin_types;
+DROP TABLE IF EXISTS mysugr;
+DROP TABLE IF EXISTS public.ns_part CASCADE;
+DROP TABLE IF EXISTS public.nightscoutdb CASCADE;
+DROP TABLE IF EXISTS sugarmate;
+DROP TYPE IF EXISTS valid_trend;

@@ -1,27 +1,16 @@
+-- +goose Up
 -- Tandem pump insulin delivery data (bolus + basal), sourced from Tandem
--- Source's pump-logs report via the tandemdata CLI / tandemsync service.
+-- Source's pump-logs report via the health-tandem-sync service. Converted
+-- from health-db/04-add-tandem-insulin-tables.sql.
 --
 -- Unlike health-db's other tables, these two are normalized rather than
--- generic-JSONB: tandemdata's own `events` table (tandemdb/migrations) keeps
--- the raw per-event-code payloads for every pump/CGM event type, but only a
--- handful of those codes represent insulin delivery, and each carries the
--- data split across several sibling events (bolus request/detail/carb/split
--- are all emitted together and completed later by a separate "completed"
--- event). These tables merge that into one row per bolus / basal-rate-change
--- so they're directly queryable without reassembling event sequences.
---
--- Safe to run multiple times (idempotent), matching the pattern in
--- 03-add-insulin-table.sql, so an already-running instance can pick this up
--- without a reset; a fresh database gets it the same way via
--- docker-entrypoint-initdb.d.
-
-do $$
-begin
-    if not exists (select 1 from pg_type where typname = 'tandem_bolus_type') then
-        create type tandem_bolus_type as ENUM ('STANDARD', 'EXTENDED');
-    end if;
-end
-$$;
+-- generic-JSONB: only a handful of Tandem's pump/CGM event codes represent
+-- insulin delivery, and each carries the data split across several sibling
+-- events (bolus request/detail/carb/split are all emitted together and
+-- completed later by a separate "completed" event). These tables merge
+-- that into one row per bolus / basal-rate-change so they're directly
+-- queryable without reassembling event sequences.
+create type tandem_bolus_type as ENUM ('STANDARD', 'EXTENDED');
 
 -- One row per bolus (keyed by the pump's bolusId), combining the
 -- BolusRequested* events (eventCode 55/59/64/65/66) with the matching
@@ -37,7 +26,7 @@ $$;
 -- (eventCode 66, BolusRequestedSplit). correction_included and carb_ratio
 -- come from eventCode 64 (BolusRequestedCarb) and explain why a correction
 -- was applied.
-create table if not exists tandem_bolus
+create table tandem_bolus
 (
     id                    bigserial primary key,
     device_assignment_id  text not null,
@@ -58,14 +47,6 @@ create table if not exists tandem_bolus
     unique (device_assignment_id, bolus_id)
 );
 
--- Adds the food/correction split columns for a tandem_bolus table created by
--- an earlier version of this file, before they existed. Safe to run
--- multiple times and safe on a fresh table (all no-ops there).
-alter table tandem_bolus add column if not exists food_bolus_size real;
-alter table tandem_bolus add column if not exists correction_bolus_size real;
-alter table tandem_bolus add column if not exists correction_included boolean;
-alter table tandem_bolus add column if not exists carb_ratio real;
-
 comment on table tandem_bolus is 'Tandem pump bolus deliveries, merged from BolusRequested*/BolusCompleted pump-log events';
 comment on column tandem_bolus.bolus_id is 'Pump-assigned bolus id (eventProperties.bolusId), unique per device_assignment_id';
 comment on column tandem_bolus.requested_at is 'estimatedDateTime of the BolusRequested* event';
@@ -79,14 +60,14 @@ comment on column tandem_bolus.carb_ratio is 'Carb ratio used for this bolus (ev
 comment on column tandem_bolus.completion_status is 'Raw completionStatus from the BolusCompleted event (3 = completed normally)';
 comment on column tandem_bolus.event_properties is 'Raw eventProperties merged from the contributing events, for fields not broken out into columns';
 
-create index if not exists idx_tandem_bolus_requested_at on tandem_bolus (requested_at);
-create index if not exists idx_tandem_bolus_properties on tandem_bolus using GIN (event_properties);
+create index idx_tandem_bolus_requested_at on tandem_bolus (requested_at);
+create index idx_tandem_bolus_properties on tandem_bolus using GIN (event_properties);
 
 -- One row per basal rate change (eventCode 3, BasalRateChange), which is
 -- what actually drives insulin delivery between boluses. commanded_rate is
 -- normalized to U/hr (the pump reports it directly in U/hr for this event
 -- code, unlike the milli-units/hr used by eventCode 279/BasalRateDelivered).
-create table if not exists tandem_basal
+create table tandem_basal
 (
     id                    bigserial primary key,
     device_assignment_id  text not null,
@@ -106,12 +87,11 @@ comment on column tandem_basal.commanded_rate is 'New commanded basal rate in U/
 comment on column tandem_basal.base_rate is 'Profile base basal rate in U/hr (eventProperties.baseBasalRate)';
 comment on column tandem_basal.max_rate is 'Profile max basal rate in U/hr (eventProperties.maxBasalRate)';
 
-create index if not exists idx_tandem_basal_changed_at on tandem_basal (changed_at);
+create index idx_tandem_basal_changed_at on tandem_basal (changed_at);
 
 -- Convenience view: every insulin delivery (bolus + basal-implied) as one
 -- timeline, similar in spirit to the mysugr/insulin tables already in this
 -- database, for dashboards that just want "how much insulin, when".
-drop view if exists tandem_insulin_timeline;
 create view tandem_insulin_timeline as
 select
     'bolus'::text as source,
@@ -124,3 +104,9 @@ where coalesce(insulin_delivered, insulin_requested) is not null
 order by event_time desc;
 
 comment on view tandem_insulin_timeline is 'Bolus insulin deliveries as a flat timeline (basal is a continuous rate, not a discrete dose, so it is not included here — see tandem_basal)';
+
+-- +goose Down
+DROP VIEW IF EXISTS tandem_insulin_timeline;
+DROP TABLE IF EXISTS tandem_basal;
+DROP TABLE IF EXISTS tandem_bolus;
+DROP TYPE IF EXISTS tandem_bolus_type;

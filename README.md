@@ -18,11 +18,12 @@ A personal health monitoring dashboard for tracking continuous glucose monitor (
 
 ```
 health-fe/           React + TypeScript frontend (Vite)
-health-api/          Go REST API (Gin)
+health-api/          Go REST API (Gin) — also owns the database schema (goose migrations)
 health-sync/         Go background sync service (Dexcom → PostgreSQL)
 health-mongo-sync/   Go one-shot gap-fill service (MongoDB → PostgreSQL)
-health-db/           PostgreSQL schema and migrations
-tandemdata/          Go CLI + tandemsync service (Tandem Source → PostgreSQL insulin data)
+health-db/           PostgreSQL data volume (schema lives in health-api's migrations)
+health-tandem-sync/  Go services (Tandem Source → PostgreSQL insulin + CGM data)
+tandemdata/          Superseded by health-tandem-sync; kept for reference during the transition
 ```
 
 ## Stack
@@ -54,6 +55,19 @@ docker compose up -d
 | pgAdmin  | http://localhost:9085       |
 | Database | localhost:9084 (PostgreSQL) |
 
+### Database schema
+
+`health-api` owns the database schema: on startup it runs any pending
+[goose](https://github.com/pressly/goose) migrations from
+`health-api/database/migrations` before serving any requests, so a brand-new
+`health-db` container ends up with the full schema automatically (no manual
+init step, no `docker-entrypoint-initdb.d` scripts). `health-sync`,
+`health-mongo-sync`, and `tandemsync` all `depends_on: health-api` with a
+`service_healthy` condition (backed by `health-api`'s `/health` endpoint and
+a Docker healthcheck), so Compose won't start them until migrations have
+finished — avoiding a race where they'd try to write to tables that don't
+exist yet on a truly fresh database.
+
 ### Filling historical gaps from MongoDB
 
 If you have a Nightscout MongoDB backend, run the one-shot gap-fill service after setting the `MONGO_*` variables in `health-mongo-sync/.env`:
@@ -64,23 +78,24 @@ docker compose run --rm health-mongo-sync
 
 This is fully idempotent — re-running it is safe and will only insert records that are not already in Postgres.
 
-### Syncing insulin data from a Tandem pump
+### Syncing insulin and CGM data from a Tandem pump
 
 If you have a Tandem insulin pump (Tandem Source account), the `tandemsync`
-service logs in every hour and upserts recent bolus and basal-rate data into
-the `tandem_bolus` / `tandem_basal` tables. Set `TANDEM_USERNAME` /
-`TANDEM_PASSWORD` in `tandemdata/.env` (see
-[`tandemdata/.env.example`](tandemdata/.env.example)), then:
+service logs in every hour and upserts recent bolus, basal-rate, and CGM
+data into the `tandem_bolus` / `tandem_basal` / `tandem_cgm` tables. Set
+`TANDEM_USERNAME` / `TANDEM_PASSWORD` in `health-tandem-sync/.env` (see
+[`health-tandem-sync/.env.example`](health-tandem-sync/.env.example)), then:
 
 ```bash
 docker compose up -d tandemsync
 ```
 
-It's fully idempotent — each cycle re-fetches a small lookback window and
-upserts, so a missed cycle or restart doesn't create duplicates or lose
-data. See [`tandemdata/README.md`](tandemdata/README.md#tandemsync--hourly-insulin-sync-into-health-db)
-for details, including the standalone `tandemdata` CLI this service is built
-on top of (for one-off downloads/backfills of the full pump event history).
+Each cycle fetches from a watermark (the latest timestamp already stored)
+rather than a fixed lookback, so a missed cycle or restart is picked up
+automatically on the next successful run instead of leaving a gap — see
+[`health-tandem-sync`](health-tandem-sync) for details, including
+`cmd/tandemload`, a one-time historical backfill command (run manually, not
+part of `docker compose up`) for the full pump event history.
 
 ## Configuration
 
@@ -99,12 +114,12 @@ sees the Mongo URI.
 
 | File | Used by | Holds |
 |---|---|---|
-| `.env` (root) | `health-db`, `health-sync`, `health-mongo-sync`, `health-api`, `tandemsync` (indirectly, see below) | `POSTGRES_*` |
+| `.env` (root) | `health-db`, `health-sync`, `health-mongo-sync`, `health-api`, `tandemsync` | `POSTGRES_*` |
 | `health-sync/.env` | `health-sync` | `BRIDGE_*`, `APPLICATION_ID`, sync settings |
 | `health-mongo-sync/.env` | `health-mongo-sync` | `MONGO_*` |
 | `health-api/.env` | `health-api` | Glucose ranges, `API_KEYS` |
 | `pgadmin/.env` | `pgadmin` | `PGADMIN_DEFAULT_EMAIL/PASSWORD` |
-| `tandemdata/.env` | `tandemsync` | `TANDEM_USERNAME/PASSWORD` only — `HEALTHDB_URL` is built by docker-compose itself from the root `.env`'s `POSTGRES_*`, not duplicated here |
+| `health-tandem-sync/.env` | `tandemsync` | `TANDEM_USERNAME/PASSWORD` only — `POSTGRES_*` comes from the root `.env` (see its own `env_file:` list in `docker-compose.yml`), not duplicated here |
 
 `health-db` itself has no per-service `.env` file — the root `.env` is all
 it needs.
@@ -113,10 +128,9 @@ Copy each `.env.example` to `.env` and fill it in:
 
 ```bash
 cp .env.example .env
-for d in health-sync health-mongo-sync health-api pgadmin; do
+for d in health-sync health-mongo-sync health-api pgadmin health-tandem-sync; do
   cp "$d/.env.example" "$d/.env"
 done
-cp tandemdata/.env.example tandemdata/.env
 ```
 
 See each `.env.example` for the full, commented variable list — Dexcom

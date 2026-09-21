@@ -1,6 +1,8 @@
+-- +goose Up
 -- Tandem CGM readings (eventCode 399, CGMReading), sourced from Tandem
--- Source's pump-logs report via the tandemdata CLI / tandemsync service,
--- same as tandem_bolus / tandem_basal (04-add-tandem-insulin-tables.sql).
+-- Source's pump-logs report via the health-tandem-sync service, same as
+-- tandem_bolus / tandem_basal (00003_add_tandem_insulin_tables.sql).
+-- Converted from health-db/05-add-tandem-cgm-table.sql.
 --
 -- Kept in its own table rather than merged into nightscoutdb/ns_part (the
 -- table health-sync/health-mongo-sync write Dexcom-sourced readings into,
@@ -14,8 +16,6 @@
 -- so a disagreement between the two sources for the same timestamp is
 -- never silently written over what health-sync already recorded.
 --
--- Safe to run multiple times (idempotent), matching 04's pattern.
---
 -- trend is a plain int, not the valid_trend ENUM — nightscoutdb/ns_part.trend
 -- (the column this is meant to line up with) is itself a plain int, storing
 -- health-sync/common.TrendToDirection's 0-9/99 scheme (0=NONE, 1=DoubleUp,
@@ -23,8 +23,7 @@
 -- 7=DoubleDown, 8=NotComputable, 9=RATE OUT OF RANGE, 99=unknown). The
 -- valid_trend ENUM in this schema is only used by the separate, apparently
 -- unused `sugarmate` table.
-
-create table if not exists tandem_cgm
+create table tandem_cgm
 (
     id                    bigserial primary key,
     device_assignment_id  text not null,
@@ -46,5 +45,8 @@ comment on column tandem_cgm.trend is 'Direction bucketed from eventProperties.r
 comment on column tandem_cgm.rate is 'Raw rate of change in mg/dL per 5 minutes, as reported by the pump';
 comment on column tandem_cgm.glucose_value_status is 'Raw glucoseValueStatus from the pump; nonzero values include out-of-sensor-range readings (e.g. LOW clamped to a display floor) — treat as suspect/informational, not a lab-accurate value';
 
-create index if not exists idx_tandem_cgm_reading_at on tandem_cgm (reading_at);
-create index if not exists idx_tandem_cgm_properties on tandem_cgm using GIN (event_properties);
+create index idx_tandem_cgm_reading_at on tandem_cgm (reading_at);
+create index idx_tandem_cgm_properties on tandem_cgm using GIN (event_properties);
+
+-- +goose Down
+DROP TABLE IF EXISTS tandem_cgm;

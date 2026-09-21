@@ -58,6 +58,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 2b. Run pending schema migrations before serving any requests.
+	sqlDB, err := db.DB()
+	if err != nil {
+		slog.Error("Failed to get underlying sql.DB for migrations", "error", err)
+		os.Exit(1)
+	}
+	if err := database.Migrate(sqlDB); err != nil {
+		slog.Error("Failed to run database migrations", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Database migrations up to date")
+
 	// 3. Set Gin mode from config
 	if cfg.AppEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)

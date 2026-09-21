@@ -2,9 +2,10 @@
 // shape (login once per cycle, poll on a ticker, upsert what's new): every
 // SYNC_INTERVAL_SECONDS (default 1 hour) it logs into Tandem Source, fetches
 // bolus/basal/CGM pump-log events, and upserts them into the tandem_bolus /
-// tandem_basal / tandem_cgm tables in health-db (see
-// health-db/04-add-tandem-insulin-tables.sql and
-// health-db/05-add-tandem-cgm-table.sql).
+// tandem_basal / tandem_cgm tables in health-db. Those tables' schema is
+// owned by health-api's goose migrations (see
+// health-api/database/migrations/00003_add_tandem_insulin_tables.sql and
+// 00004_add_tandem_cgm_table.sql), not by anything in this module.
 //
 // The fetch window starts from a watermark — the latest timestamp already
 // stored in health-db across those three tables (insulin.LastSyncedAt) —

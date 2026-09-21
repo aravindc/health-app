@@ -8,7 +8,8 @@ import "time"
 
 // Bolus is one merged bolus delivery: the BolusRequested*/BolusCompleted
 // pump-log events for a given bolusId, combined into a single record. Maps
-// to the tandem_bolus table (health-db/04-add-tandem-insulin-tables.sql).
+// to the tandem_bolus table (see
+// health-api/database/migrations/00003_add_tandem_insulin_tables.sql).
 //
 // A bolus is often a mix of a food (carb-covering) component and a
 // correction (high-BG-covering) component delivered together as one dose;

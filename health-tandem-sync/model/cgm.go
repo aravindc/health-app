@@ -4,8 +4,8 @@ import "time"
 
 // CGMReading is one CGMReading pump-log event (eventCode 399) — the glucose
 // value the pump itself received from the CGM transmitter, independent of
-// health-sync's Dexcom Share polling. Maps to the tandem_cgm table
-// (health-db/05-add-tandem-cgm-table.sql).
+// health-sync's Dexcom Share polling. Maps to the tandem_cgm table (see
+// health-api/database/migrations/00004_add_tandem_cgm_table.sql).
 //
 // This is expected to closely duplicate nightscoutdb/ns_part (the table
 // health-sync/health-mongo-sync populate, and every existing chart/TIR/GMI

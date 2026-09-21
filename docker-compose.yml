@@ -10,10 +10,6 @@ services:
       - ./.env
     volumes:
       - "./health-db/pg_data:/var/lib/postgresql/data"
-      # - "./health-db/01-createdb.sql:/docker-entrypoint-initdb.d/01-createdb.sql"
-      - "./health-db/02-createtables.sql:/docker-entrypoint-initdb.d/02-createtables.sql"
-      - "./health-db/04-add-tandem-insulin-tables.sql:/docker-entrypoint-initdb.d/04-add-tandem-insulin-tables.sql"
-      - "./health-db/05-add-tandem-cgm-table.sql:/docker-entrypoint-initdb.d/05-add-tandem-cgm-table.sql"
   health-sync:
     networks:
       - health_be
@@ -25,7 +21,10 @@ services:
     environment:
       - DB_SSL_MODE=disable
     depends_on:
-      - health-db
+      health-db:
+        condition: service_started
+      health-api:
+        condition: service_healthy
   health-mongo-sync:
     networks:
       - health_be
@@ -37,7 +36,10 @@ services:
     environment:
       - DB_SSL_MODE=disable
     depends_on:
-      - health-db
+      health-db:
+        condition: service_started
+      health-api:
+        condition: service_healthy
   tandemsync:
     networks:
       - health_be
@@ -52,7 +54,10 @@ services:
       - DB_SSL_MODE=disable
       - SYNC_INTERVAL_SECONDS=3600
     depends_on:
-      - health-db
+      health-db:
+        condition: service_started
+      health-api:
+        condition: service_healthy
   health-api:
     networks:
       - health_fe

@@ -1,9 +1,11 @@
 // Command tandemload does a one-time historical backfill: it logs into
 // Tandem Source, fetches the account's full available pump-log history (or
 // an explicit date range) in chunkDays windows, and upserts bolus/basal/CGM
-// data into health-db's tandem_bolus / tandem_basal / tandem_cgm tables (see
-// health-db/04-add-tandem-insulin-tables.sql and
-// health-db/05-add-tandem-cgm-table.sql) as each chunk is fetched.
+// data into health-db's tandem_bolus / tandem_basal / tandem_cgm tables as
+// each chunk is fetched. Those tables' schema is owned by health-api's
+// goose migrations (see
+// health-api/database/migrations/00003_add_tandem_insulin_tables.sql and
+// 00004_add_tandem_cgm_table.sql), not by anything in this module.
 //
 // This is the one-shot counterpart to cmd/tandemsync, which polls for
 // incremental data every SYNC_INTERVAL_SECONDS; the two share the insulin

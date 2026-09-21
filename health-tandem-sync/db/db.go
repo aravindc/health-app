@@ -94,10 +94,10 @@ func URLFromEnv() (string, error) {
 // disable the backup.
 //
 // The backup database needs the same schema as health-db (tandem_bolus /
-// tandem_basal / tandem_cgm); nothing here creates it — run
-// health-db/04-add-tandem-insulin-tables.sql and
-// health-db/05-add-tandem-cgm-table.sql against it once, the same as for
-// health-db itself.
+// tandem_basal / tandem_cgm); nothing here creates it. Schema is owned by
+// health-api's goose migrations (health-api/database/migrations) — point
+// health-api at the backup instance once to apply them there, or run goose
+// directly against it.
 func BackupURLFromEnv() (url string, enabled bool, err error) {
 	const prefix = "BACKUP_POSTGRESQL"
 	if !anyEnvSet(prefix) {

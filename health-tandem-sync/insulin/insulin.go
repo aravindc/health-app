@@ -1,8 +1,9 @@
 // Package insulin extracts bolus, basal-rate-change, and CGM events from
 // parsed Tandem pump-logs data and upserts them into the normalized
-// tandem_bolus / tandem_basal / tandem_cgm tables in health-db (see
-// health-db/04-add-tandem-insulin-tables.sql and
-// health-db/05-add-tandem-cgm-table.sql).
+// tandem_bolus / tandem_basal / tandem_cgm tables in health-db. Those
+// tables' schema is owned by health-api's goose migrations (see
+// health-api/database/migrations/00003_add_tandem_insulin_tables.sql and
+// 00004_add_tandem_cgm_table.sql), not by anything in this module.
 package insulin
 
 import (

@@ -192,9 +192,14 @@ insulin/          Bolus/basal extraction + upsert logic, targeting health-db
 hour, fetches a recent window of bolus and basal pump-log events, and
 upserts them into the `tandem_bolus` / `tandem_basal` tables in **health-db**
 — the main health-app's PostgreSQL database, not tandemdata's own `events`
-table. Those tables are created by
-[`health-db/04-add-tandem-insulin-tables.sql`](../health-db/04-add-tandem-insulin-tables.sql)
-in the parent project.
+table. Those tables' schema is owned by `health-api`'s goose migrations
+(`../health-api/database/migrations`) in the parent project.
+
+**Note:** this `cmd/tandemsync` has been superseded by the standalone
+[`health-tandem-sync`](../health-tandem-sync) module, which covers the same
+sync plus CGM data and a one-time historical-load command
+(`cmd/tandemload`). This section is left for reference while `tandemdata`
+is phased out.
 
 It's a different binary from `-d`/`-l`/`-p` (which remain a one-shot,
 manually-run workflow against tandemdata's own database) because it talks to
