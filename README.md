@@ -103,6 +103,19 @@ automatically on the next successful run instead of leaving a gap — see
 `cmd/tandemload`, a one-time historical backfill command (run manually, not
 part of `docker compose up`) for the full pump event history.
 
+`tandemload` runs on the host, not in a container, so `POSTGRES_HOST`/`PORT`
+in the root `.env` (`health-db:5432`, correct for containers on the
+`health_be` network) don't resolve. Use the wrapper script instead of
+`go run ./cmd/tandemload` directly — it looks up `health-db`'s actual
+host-mapped port via `docker compose port` and overrides `POSTGRES_HOST`/
+`PORT`/`DB_SSL_MODE` accordingly:
+
+```bash
+cd health-tandem-sync
+./run-tandemload.sh                    # full available history
+./run-tandemload.sh -start 2024-01-01  # any tandemload flag works
+```
+
 ## Configuration
 
 Config is split across a root `.env` plus one `.env` per service directory,
