@@ -35,7 +35,7 @@ tandemdata/          Superseded by health-tandem-sync; kept for reference during
 | Database     | PostgreSQL (partitioned by month)    |
 | Dexcom sync  | Go, Dexcom Share API                 |
 | MongoDB sync | Go, MongoDB driver                   |
-| Infra        | Docker Compose, nginx, pgAdmin       |
+| Infra        | Docker Compose, nginx, Bytebase      |
 
 ## Running
 
@@ -52,8 +52,12 @@ docker compose up -d
 |----------|----------------------------|
 | Frontend | http://localhost:9083       |
 | API      | http://localhost:9082       |
-| pgAdmin  | http://localhost:9085       |
+| Bytebase | http://localhost:9085       |
 | Database | localhost:9084 (PostgreSQL) |
+
+Bytebase has no `.env` — its admin account and the `health-db` connection
+are both set up through its own first-run web UI at http://localhost:9085,
+not via config.
 
 ### Database schema
 
@@ -107,10 +111,9 @@ The root `.env` holds only the shared database credentials
 (`POSTGRES_HOST/PORT/DB/USER/PASSWORD`), since `health-db`, `health-sync`,
 `health-mongo-sync`, and `health-api` all connect to the same Postgres
 instance with the same login. That way the DB password lives in exactly one
-file, not four. Every other secret — Dexcom credentials, MongoDB URI,
-pgAdmin password, Tandem credentials — stays in its own service's `.env`,
-so e.g. `health-api` never sees your Dexcom password and `pgadmin` never
-sees the Mongo URI.
+file, not four. Every other secret — Dexcom credentials, MongoDB URI, Tandem
+credentials — stays in its own service's `.env`, so e.g. `health-api` never
+sees your Dexcom password.
 
 | File | Used by | Holds |
 |---|---|---|
@@ -118,17 +121,17 @@ sees the Mongo URI.
 | `health-sync/.env` | `health-sync` | `BRIDGE_*`, `APPLICATION_ID`, sync settings |
 | `health-mongo-sync/.env` | `health-mongo-sync` | `MONGO_*` |
 | `health-api/.env` | `health-api` | Glucose ranges, `API_KEYS` |
-| `pgadmin/.env` | `pgadmin` | `PGADMIN_DEFAULT_EMAIL/PASSWORD` |
 | `health-tandem-sync/.env` | `tandemsync` | `TANDEM_USERNAME/PASSWORD` only — `POSTGRES_*` comes from the root `.env` (see its own `env_file:` list in `docker-compose.yml`), not duplicated here |
 
 `health-db` itself has no per-service `.env` file — the root `.env` is all
-it needs.
+it needs. Neither does `bytebase` — see [Database schema](#database-schema)
+above.
 
 Copy each `.env.example` to `.env` and fill it in:
 
 ```bash
 cp .env.example .env
-for d in health-sync health-mongo-sync health-api pgadmin health-tandem-sync; do
+for d in health-sync health-mongo-sync health-api health-tandem-sync; do
   cp "$d/.env.example" "$d/.env"
 done
 ```

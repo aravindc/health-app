@@ -83,17 +83,16 @@ services:
     restart: on-failure
     depends_on:
       - health-api
-  pgadmin:
-    image: dpage/pgadmin4:9.12
+  bytebase:
+    image: bytebase/bytebase:latest
+    init: true
     networks:
       - health_be
     ports:
-      - 9085:80
-    env_file:
-      - ./pgadmin/.env
-    environment:
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+      - "9085:8080"
+    volumes:
+      - "./bytebase/data:/var/opt/bytebase"
+    restart: on-failure
 networks:
   health_fe:
     driver: bridge
