@@ -29,7 +29,7 @@ services:
     networks:
       - health_be
     build: ./health-mongo-sync
-    restart: "no"           # run once; use a one-shot restart policy
+    restart: "no" # run once; use a one-shot restart policy
     env_file:
       - ./.env
       - ./health-mongo-sync/.env
@@ -40,7 +40,7 @@ services:
         condition: service_started
       health-api:
         condition: service_healthy
-  tandemsync:
+  health-tandem-sync:
     networks:
       - health_be
     build:

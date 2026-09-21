@@ -75,8 +75,17 @@ const (
 )
 
 func main() {
+	// Load health-tandem-sync/.env first, then the root .env as a fallback
+	// for anything not already set (POSTGRES_*) — see cmd/tandemload's
+	// identical comment for why this order and why both files. Under
+	// docker-compose this is a no-op (POSTGRES_* is already in the
+	// container's environment via env_file:); it only matters when running
+	// this binary standalone from inside health-tandem-sync/.
 	if err := tandem.LoadDotEnv(".env"); err != nil {
 		log.Println("Warning: could not read .env:", err)
+	}
+	if err := tandem.LoadDotEnv("../.env"); err != nil {
+		log.Println("Warning: could not read ../.env:", err)
 	}
 
 	username := requireEnv("TANDEM_USERNAME")

@@ -66,7 +66,7 @@ not via config.
 `health-api/database/migrations` before serving any requests, so a brand-new
 `health-db` container ends up with the full schema automatically (no manual
 init step, no `docker-entrypoint-initdb.d` scripts). `health-sync`,
-`health-mongo-sync`, and `tandemsync` all `depends_on: health-api` with a
+`health-mongo-sync`, and `health-tandem-sync` all `depends_on: health-api` with a
 `service_healthy` condition (backed by `health-api`'s `/health` endpoint and
 a Docker healthcheck), so Compose won't start them until migrations have
 finished — avoiding a race where they'd try to write to tables that don't
@@ -84,14 +84,16 @@ This is fully idempotent — re-running it is safe and will only insert records 
 
 ### Syncing insulin and CGM data from a Tandem pump
 
-If you have a Tandem insulin pump (Tandem Source account), the `tandemsync`
-service logs in every hour and upserts recent bolus, basal-rate, and CGM
-data into the `tandem_bolus` / `tandem_basal` / `tandem_cgm` tables. Set
-`TANDEM_USERNAME` / `TANDEM_PASSWORD` in `health-tandem-sync/.env` (see
+If you have a Tandem insulin pump (Tandem Source account), the
+`health-tandem-sync` service (binary `tandemsync`, from the
+`health-tandem-sync` module) logs in every hour and upserts recent bolus,
+basal-rate, and CGM data into the `tandem_bolus` / `tandem_basal` /
+`tandem_cgm` tables. Set `TANDEM_USERNAME` / `TANDEM_PASSWORD` in
+`health-tandem-sync/.env` (see
 [`health-tandem-sync/.env.example`](health-tandem-sync/.env.example)), then:
 
 ```bash
-docker compose up -d tandemsync
+docker compose up -d health-tandem-sync
 ```
 
 Each cycle fetches from a watermark (the latest timestamp already stored)
@@ -117,11 +119,11 @@ sees your Dexcom password.
 
 | File | Used by | Holds |
 |---|---|---|
-| `.env` (root) | `health-db`, `health-sync`, `health-mongo-sync`, `health-api`, `tandemsync` | `POSTGRES_*` |
+| `.env` (root) | `health-db`, `health-sync`, `health-mongo-sync`, `health-api`, `health-tandem-sync` | `POSTGRES_*` |
 | `health-sync/.env` | `health-sync` | `BRIDGE_*`, `APPLICATION_ID`, sync settings |
 | `health-mongo-sync/.env` | `health-mongo-sync` | `MONGO_*` |
 | `health-api/.env` | `health-api` | Glucose ranges, `API_KEYS` |
-| `health-tandem-sync/.env` | `tandemsync` | `TANDEM_USERNAME/PASSWORD` only — `POSTGRES_*` comes from the root `.env` (see its own `env_file:` list in `docker-compose.yml`), not duplicated here |
+| `health-tandem-sync/.env` | `health-tandem-sync` | `TANDEM_USERNAME/PASSWORD` only — `POSTGRES_*` comes from the root `.env` (see its own `env_file:` list in `docker-compose.yml`), not duplicated here |
 
 `health-db` itself has no per-service `.env` file — the root `.env` is all
 it needs. Neither does `bytebase` — see [Database schema](#database-schema)

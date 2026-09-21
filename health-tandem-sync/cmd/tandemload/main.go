@@ -63,8 +63,23 @@ func main() {
 	endDate := flag.String("end", "", "end date (YYYY-MM-DD) of an explicit range; defaults to now if -start is set")
 	flag.Parse()
 
+	// Load health-tandem-sync/.env (TANDEM_*, and optionally
+	// BACKUP_POSTGRESQL_*) first, then the root .env (POSTGRES_*, shared
+	// with the other services) as a fallback for anything not already set.
+	// LoadDotEnv never overwrites an already-set variable, so this order
+	// makes the more specific file win on any overlap while still letting
+	// this run without POSTGRES_* being duplicated into
+	// health-tandem-sync/.env — mirroring docker-compose.yml's
+	// env_file: [./.env, ./health-tandem-sync/.env] for the tandemsync
+	// service (Compose's later-file-wins there works out to the same
+	// effective precedence, since the two files don't share any keys
+	// today). Assumes tandemload is run from inside health-tandem-sync/,
+	// as documented.
 	if err := tandem.LoadDotEnv(".env"); err != nil {
 		fmt.Fprintln(os.Stderr, "Warning: could not read .env:", err)
+	}
+	if err := tandem.LoadDotEnv("../.env"); err != nil {
+		fmt.Fprintln(os.Stderr, "Warning: could not read ../.env:", err)
 	}
 
 	username := requireEnv("TANDEM_USERNAME")
