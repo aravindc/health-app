@@ -431,16 +431,24 @@ export default function GlucoseInsulinChart({
   const cgmInnerHeight = PANEL_HEIGHT_CGM - MARGIN.top - MARGIN.bottom;
   const cgmDomainMin = 0;
   const cgmDomainMax = 20;
+  // nearest() binary-searches assuming ascending-by-time order, but the
+  // API response isn't guaranteed sorted — sort once here and reuse for
+  // both the drawn line and hover lookups, rather than each recomputing
+  // its own sort (or, as hoverCgm previously did, skipping it and binary
+  // searching the raw unsorted array, which returns a wrong/effectively
+  // static nearest-point regardless of where the pointer is).
+  const sortedCgmData = useMemo(
+    () => [...cgmData].sort((a, b) => a.epoch - b.epoch),
+    [cgmData]
+  );
   const cgmPoints = useMemo(
     () =>
-      [...cgmData]
-        .sort((a, b) => a.epoch - b.epoch)
-        .map((d) => ({
-          x: xForTime(d.epoch, displayWindowStart, pxPerHr),
-          y: yScale(d.mmol, cgmDomainMin, cgmDomainMax, cgmInnerHeight),
-          raw: d,
-        })),
-    [cgmData, displayWindowStart, pxPerHr, cgmInnerHeight]
+      sortedCgmData.map((d) => ({
+        x: xForTime(d.epoch, displayWindowStart, pxPerHr),
+        y: yScale(d.mmol, cgmDomainMin, cgmDomainMax, cgmInnerHeight),
+        raw: d,
+      })),
+    [sortedCgmData, displayWindowStart, pxPerHr, cgmInnerHeight]
   );
   const doseMarkers = useMemo(
     () =>
@@ -496,7 +504,7 @@ export default function GlucoseInsulinChart({
   // the hovered timestamp. Kept as a single overlay (rather than one
   // tooltip per panel) so it never reserves layout space in any panel and
   // can't push the panels below it around. Suppressed while dragging. ---
-  const hoverCgm = hoverTime !== null ? nearest(cgmData, hoverTime, (d) => d.epoch) : null;
+  const hoverCgm = hoverTime !== null ? nearest(sortedCgmData, hoverTime, (d) => d.epoch) : null;
   const hoverBasal =
     hoverTime !== null
       ? [...basalPoints].reverse().find((p) => parseTime(p.time) <= hoverTime!)
