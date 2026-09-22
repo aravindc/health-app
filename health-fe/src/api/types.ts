@@ -58,3 +58,33 @@ export interface TimeInRange {
   hours: number;
   minutes: number;
 }
+
+export interface BolusDose {
+  bolus_id: number;
+  delivered_at: string;
+  insulin_delivered: number;
+  food_units: number;
+  correction_units: number;
+  dominant_category: "food" | "correction";
+}
+
+export interface ActivityPoint {
+  time: string;
+  units: number;
+}
+
+export interface BolusChart {
+  doses: BolusDose[];
+  food_activity: ActivityPoint[];
+  correction_activity: ActivityPoint[];
+}
+
+export interface BasalPoint {
+  time: string;
+  commanded_rate: number;
+}
+
+export interface BasalChart {
+  points: BasalPoint[];
+  window_end: string;
+}

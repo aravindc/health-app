@@ -8,6 +8,8 @@ import type {
   GmiResponse,
   PercentInRange,
   DailyTir,
+  BolusChart,
+  BasalChart,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:9082";
@@ -24,7 +26,12 @@ export const api = {
   getLastXh: (hours: number) => fetchJSON<DataPoint[]>(`/lastxh/${hours}`),
   getLastXhOffset: (hours: number, offsetHours: number) =>
     fetchJSON<DataPoint[]>(`/lastxh/${hours}/offset/${offsetHours}`),
-  getDayChart: (date: string) => fetchJSON<DataPoint[]>(`/daychart/${date}`),
+  getRangeChart: (fromIso: string, toIso: string) =>
+    fetchJSON<DataPoint[]>(`/chart?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`),
+  getBolusRangeChart: (fromIso: string, toIso: string) =>
+    fetchJSON<BolusChart>(`/bolus?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`),
+  getBasalRangeChart: (fromIso: string, toIso: string) =>
+    fetchJSON<BasalChart>(`/basal?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`),
   getFirstDate: () => fetchJSON<{ date: string }>("/firstdate"),
   getAvgMmol: (period: string) => fetchJSON<AvgMmol>(`/avgmmol/${period}`),
   getQuart: (days: number) => fetchJSON<QuartPoint[]>(`/quart/${days}`),

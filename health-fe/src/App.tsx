@@ -12,7 +12,7 @@ import type {
   PercentInRange,
 } from "./api/types";
 import CurrentReading from "./components/CurrentReading";
-import BgChart from "./components/BgChart";
+import GlucoseInsulinChart from "./components/GlucoseInsulinChart";
 import InsightsGrid from "./components/InsightsGrid";
 import Heatmap, { avgColor, tirColor } from "./components/Heatmap";
 import "./App.css";
@@ -91,7 +91,7 @@ function App() {
       {error && <div className="dashboard__error">{error}</div>}
 
       <main className="dashboard__main">
-        <BgChart refreshTick={chartRefreshTick} />
+        <GlucoseInsulinChart refreshTick={chartRefreshTick} />
 
         <InsightsGrid
           avgMmol24h={avgMmol24h}
