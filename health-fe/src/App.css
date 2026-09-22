@@ -168,6 +168,10 @@
   padding-right: 1rem;
 }
 
+.chart-combined-tooltip__table td:first-child .chart-legend__swatch {
+  margin-right: 0.4rem;
+}
+
 .chart-combined-tooltip__value {
   text-align: right;
   font-weight: 600;
