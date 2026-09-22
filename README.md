@@ -23,7 +23,6 @@ health-sync/         Go background sync service (Dexcom → PostgreSQL)
 health-mongo-sync/   Go one-shot gap-fill service (MongoDB → PostgreSQL)
 health-db/           PostgreSQL data volume (schema lives in health-api's migrations)
 health-tandem-sync/  Go services (Tandem Source → PostgreSQL insulin + CGM data)
-tandemdata/          Superseded by health-tandem-sync; kept for reference during the transition
 ```
 
 ## Stack
