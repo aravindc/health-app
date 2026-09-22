@@ -52,7 +52,7 @@ services:
       - ./health-tandem-sync/.env
     environment:
       - DB_SSL_MODE=disable
-      - SYNC_INTERVAL_SECONDS=3600
+      - SYNC_INTERVAL_SECONDS=900
     depends_on:
       health-db:
         condition: service_started
