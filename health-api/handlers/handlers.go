@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"health-api/config"
+	"health-api/insulinactivity"
 	"health-api/models"
 )
 
@@ -77,6 +79,40 @@ type QuartResponse struct {
 type SparklineResponse struct {
 	BgTime int64   `json:"bg_time"`
 	BgMmol float64 `json:"bg_mmol"`
+}
+
+// BolusDose is one delivered bolus, split into its food/correction
+// components, for the dose markers drawn on the CGM and activity panels.
+type BolusDose struct {
+	BolusID          int64     `json:"bolus_id"`
+	DeliveredAt      time.Time `json:"delivered_at"`
+	InsulinDelivered float64   `json:"insulin_delivered"`
+	FoodUnits        float64   `json:"food_units"`
+	CorrectionUnits  float64   `json:"correction_units"`
+	// DominantCategory is "food" or "correction", whichever component is
+	// larger for this dose — used to color the dose's dot/dashed line.
+	DominantCategory string `json:"dominant_category"`
+}
+
+// ActivityPoint is one 5-minute sample of a summed insulin-activity curve.
+type ActivityPoint struct {
+	Time  time.Time `json:"time"`
+	Units float64   `json:"units"`
+}
+
+// BolusChartResponse is for GET /bolus/:date.
+type BolusChartResponse struct {
+	Doses              []BolusDose     `json:"doses"`
+	FoodActivity       []ActivityPoint `json:"food_activity"`
+	CorrectionActivity []ActivityPoint `json:"correction_activity"`
+}
+
+// BasalPoint is one commanded basal-rate sample (a step point: the rate
+// held from this timestamp until the next point, or until the window's
+// end for the last point).
+type BasalPoint struct {
+	Time          time.Time `json:"time"`
+	CommandedRate float64   `json:"commanded_rate"`
 }
 
 // --- Helper Functions (Methods) ---
@@ -418,27 +454,16 @@ func (h *Handler) GetLastXhOffset(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
-// GetDayChart (GET /daychart/:date)
-// Returns data for the full calendar day given by :date (YYYY-MM-DD, local time).
-// For today, the window ends at the current time; for past days it ends at 23:59:59.
-func (h *Handler) GetDayChart(c *gin.Context) {
-	dateStr := c.Param("date")
-	loc := time.Local
-	day, err := time.ParseInLocation("2006-01-02", dateStr, loc)
+// GetRangeChart (GET /chart?from=...&to=...)
+// Returns glucose readings for an arbitrary [from, to) window (RFC3339
+// timestamps), for the CGM panel's continuous, drag-to-pan viewport —
+// unlike a calendar-day window, from/to need not be midnight-aligned
+// (e.g. "yesterday 11pm to today 11pm" while panning).
+func (h *Handler) GetRangeChart(c *gin.Context) {
+	from, to, err := rangeWindow(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "Invalid date, expected YYYY-MM-DD"})
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
 		return
-	}
-
-	from := day // 00:00:00 of the requested day
-	now := time.Now()
-	todayMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-
-	var to time.Time
-	if !day.Before(todayMidnight) {
-		to = now
-	} else {
-		to = day.Add(24*time.Hour - time.Second) // 23:59:59
 	}
 
 	data, err := h.getDataInWindow(from, to)
@@ -447,6 +472,30 @@ func (h *Handler) GetDayChart(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, data)
+}
+
+// rangeWindow parses the from/to query params (RFC3339 timestamps) shared
+// by every range-paged endpoint (GetRangeChart, GetBolusRangeChart,
+// GetBasalRangeChart) so they all page identically and stay in sync when
+// charted side by side. to must be after from.
+func rangeWindow(c *gin.Context) (from, to time.Time, err error) {
+	fromStr := c.Query("from")
+	toStr := c.Query("to")
+	if fromStr == "" || toStr == "" {
+		return time.Time{}, time.Time{}, fmt.Errorf("both from and to query params are required (RFC3339)")
+	}
+	from, err = time.Parse(time.RFC3339, fromStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid from (want RFC3339): %w", err)
+	}
+	to, err = time.Parse(time.RFC3339, toStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid to (want RFC3339): %w", err)
+	}
+	if !to.After(from) {
+		return time.Time{}, time.Time{}, fmt.Errorf("to must be after from")
+	}
+	return from, to, nil
 }
 
 // GetFirstDate (GET /firstdate)
@@ -459,6 +508,152 @@ func (h *Handler) GetFirstDate(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"date": earliest.Local().Format("2006-01-02")})
+}
+
+// splitDelivered divides a bolus's delivered units into food/correction
+// components, proportionally to the requested split (food_bolus_size /
+// correction_bolus_size, which sum to insulin_requested). It falls back to
+// treating the full delivered amount as food when there's nothing to
+// proportion from — either because no split was recorded at all, or
+// because the recorded split is (0, 0) despite units having actually been
+// delivered (a data quirk seen in practice: insulin_requested/delivered
+// can be nonzero while food_bolus_size/correction_bolus_size are both 0).
+// Either way, delivered insulin must never be silently dropped from the
+// activity curve (should be rare in practice; see tandemdata/prompt.md).
+func splitDelivered(delivered float64, insulinRequested, foodBolusSize, correctionBolusSize *float64) (food, correction float64) {
+	requested := 0.0
+	if insulinRequested != nil {
+		requested = *insulinRequested
+	}
+	if requested > 0 && foodBolusSize != nil && correctionBolusSize != nil {
+		food = delivered * (*foodBolusSize / requested)
+		correction = delivered * (*correctionBolusSize / requested)
+	}
+	if food <= 0 && correction <= 0 {
+		food = delivered
+		correction = 0
+	}
+	return food, correction
+}
+
+// GetBolusRangeChart (GET /bolus?from=...&to=...)
+// Returns the window's delivered boluses (split food/correction, for the
+// dose markers) plus the modeled food/correction insulin-activity curves
+// built from them — see insulinactivity for the raised-cosine-bell math.
+// Doses are windowed by completed_at (when insulin was actually delivered,
+// which is what the activity curve models), not requested_at.
+func (h *Handler) GetBolusRangeChart(c *gin.Context) {
+	from, to, err := rangeWindow(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	var rows []models.TandemBolus
+	tx := h.DB.
+		Where("completed_at >= ? AND completed_at < ? AND insulin_delivered IS NOT NULL", from, to).
+		Order("completed_at asc").
+		Find(&rows)
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get bolus data"})
+		slog.Error("Failed to query tandem_bolus", "error", tx.Error)
+		return
+	}
+
+	doses := make([]BolusDose, 0, len(rows))
+	foodDoses := make([]insulinactivity.Dose, 0, len(rows))
+	correctionDoses := make([]insulinactivity.Dose, 0, len(rows))
+
+	for _, r := range rows {
+		delivered := *r.InsulinDelivered
+		deliveredAt := *r.CompletedAt
+
+		food, correction := splitDelivered(delivered, r.InsulinRequested, r.FoodBolusSize, r.CorrectionBolusSize)
+
+		dominant := "food"
+		if correction > food {
+			dominant = "correction"
+		}
+
+		doses = append(doses, BolusDose{
+			BolusID:          r.BolusID,
+			DeliveredAt:      deliveredAt,
+			InsulinDelivered: delivered,
+			FoodUnits:        round(food, 3),
+			CorrectionUnits:  round(correction, 3),
+			DominantCategory: dominant,
+		})
+
+		if food > 0 {
+			foodDoses = append(foodDoses, insulinactivity.Dose{DeliveredAt: deliveredAt, Units: food})
+		}
+		if correction > 0 {
+			correctionDoses = append(correctionDoses, insulinactivity.Dose{DeliveredAt: deliveredAt, Units: correction})
+		}
+	}
+
+	c.JSON(http.StatusOK, BolusChartResponse{
+		Doses:              doses,
+		FoodActivity:       toActivityPoints(insulinactivity.Curve(foodDoses)),
+		CorrectionActivity: toActivityPoints(insulinactivity.Curve(correctionDoses)),
+	})
+}
+
+func toActivityPoints(points []insulinactivity.Point) []ActivityPoint {
+	result := make([]ActivityPoint, len(points))
+	for i, p := range points {
+		result[i] = ActivityPoint{Time: p.Time, Units: round(p.Units, 4)}
+	}
+	return result
+}
+
+// GetBasalRangeChart (GET /basal?from=...&to=...)
+// Returns the window's commanded basal-rate changes as step points: the
+// rate in commanded_rate holds from that timestamp until the next point
+// (or until the window's end, for the chart to draw a final step through
+// to rather than stopping short at the last change).
+func (h *Handler) GetBasalRangeChart(c *gin.Context) {
+	from, to, err := rangeWindow(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	// The rate in effect at the start of the window may have been set by a
+	// change before `from` (e.g. an overnight rate carrying into the day),
+	// so also fetch the latest change strictly before `from` and use it as
+	// the window's opening step.
+	var carryIn models.TandemBasal
+	hasCarryIn := true
+	if tx := h.DB.Where("changed_at < ?", from).Order("changed_at desc").First(&carryIn); tx.Error != nil {
+		if tx.Error != gorm.ErrRecordNotFound {
+			c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get basal data"})
+			slog.Error("Failed to query carry-in tandem_basal", "error", tx.Error)
+			return
+		}
+		hasCarryIn = false
+	}
+
+	var rows []models.TandemBasal
+	tx := h.DB.
+		Where("changed_at >= ? AND changed_at < ?", from, to).
+		Order("changed_at asc").
+		Find(&rows)
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get basal data"})
+		slog.Error("Failed to query tandem_basal", "error", tx.Error)
+		return
+	}
+
+	points := make([]BasalPoint, 0, len(rows)+1)
+	if hasCarryIn {
+		points = append(points, BasalPoint{Time: from, CommandedRate: carryIn.CommandedRate})
+	}
+	for _, r := range rows {
+		points = append(points, BasalPoint{Time: r.ChangedAt, CommandedRate: r.CommandedRate})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"points": points, "window_end": to})
 }
 
 // GetTimeInRange (GET /timeinrange/:hours)

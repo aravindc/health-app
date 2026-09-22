@@ -105,3 +105,45 @@ type InsulinActivity struct {
 func (InsulinActivity) TableName() string {
 	return "insulin_activity"
 }
+
+// TandemBolus mirrors health-api/database/migrations/00003_add_tandem_insulin_tables.sql's
+// tandem_bolus table: one row per pump bolus, merged from Tandem's
+// BolusRequested*/BolusCompleted pump-log events by health-tandem-sync.
+type TandemBolus struct {
+	ID                  int64      `gorm:"primaryKey" json:"id"`
+	DeviceAssignmentID  string     `json:"device_assignment_id"`
+	BolusID             int64      `json:"bolus_id"`
+	BolusType           *string    `json:"bolus_type"`
+	RequestedAt         *time.Time `json:"requested_at"`
+	CompletedAt         *time.Time `json:"completed_at"`
+	InsulinRequested    *float64   `json:"insulin_requested"`
+	InsulinDelivered    *float64   `json:"insulin_delivered"`
+	FoodBolusSize       *float64   `json:"food_bolus_size"`
+	CorrectionBolusSize *float64   `json:"correction_bolus_size"`
+	CorrectionIncluded  *bool      `json:"correction_included"`
+	CarbAmount          *float64   `json:"carb_amount"`
+	CarbRatio           *float64   `json:"carb_ratio"`
+	Bg                  *float64   `json:"bg"`
+	CompletionStatus    *int16     `json:"completion_status"`
+}
+
+func (TandemBolus) TableName() string {
+	return "tandem_bolus"
+}
+
+// TandemBasal mirrors the tandem_basal table: one row per basal rate
+// change (eventCode 3 / BasalRateChange), rate already normalized to U/hr.
+type TandemBasal struct {
+	ID                 int64     `gorm:"primaryKey" json:"id"`
+	DeviceAssignmentID string    `json:"device_assignment_id"`
+	SequenceGroup      int       `json:"sequence_group"`
+	SequenceNumber     int       `json:"sequence_number"`
+	ChangedAt          time.Time `json:"changed_at"`
+	CommandedRate      float64   `json:"commanded_rate"`
+	BaseRate           *float64  `json:"base_rate"`
+	MaxRate            *float64  `json:"max_rate"`
+}
+
+func (TandemBasal) TableName() string {
+	return "tandem_basal"
+}

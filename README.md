@@ -168,7 +168,9 @@ All endpoints require an `X-API-Key` header if `API_KEYS` is configured. Excepti
 | GET    | `/lastreading`                    | Most recent glucose reading + trend      |
 | GET    | `/lastxh/:hours`                  | Readings for the last N hours            |
 | GET    | `/lastxh/:hours/offset/:offset`   | Readings for N hours ending offset ago   |
-| GET    | `/daychart/:date`                 | Readings for a full calendar day (YYYY-MM-DD) |
+| GET    | `/chart?from=&to=`                | Glucose readings for an arbitrary window (RFC3339) |
+| GET    | `/bolus?from=&to=`                | Bolus doses + modeled food/correction activity for a window |
+| GET    | `/basal?from=&to=`                | Commanded basal-rate step points for a window |
 | GET    | `/dailyavg/:days`                 | Daily averages for past N days           |
 | GET    | `/dailytir/:days`                 | Daily Time In Range for past N days      |
 | GET    | `/avgmmol/:period`                | Average mmol/L for period (1h–90d)       |
