@@ -31,15 +31,15 @@ jobs:
       run:
         working-directory: health-api
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
             src:
               - 'health-api/**'
       - if: steps.changes.outputs.src == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: health-api/go.mod
           cache-dependency-path: health-api/go.sum
@@ -50,9 +50,9 @@ jobs:
       - if: steps.changes.outputs.src == 'true'
         run: go test ./... -v
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: health-api
           push: false
@@ -66,15 +66,15 @@ jobs:
       run:
         working-directory: health-sync
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
             src:
               - 'health-sync/**'
       - if: steps.changes.outputs.src == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: health-sync/go.mod
           cache-dependency-path: health-sync/go.sum
@@ -85,9 +85,9 @@ jobs:
       - if: steps.changes.outputs.src == 'true'
         run: go test ./... -v
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: health-sync
           push: false
@@ -101,15 +101,15 @@ jobs:
       run:
         working-directory: health-mongo-sync
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
             src:
               - 'health-mongo-sync/**'
       - if: steps.changes.outputs.src == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: health-mongo-sync/go.mod
           cache-dependency-path: health-mongo-sync/go.sum
@@ -120,9 +120,9 @@ jobs:
       - if: steps.changes.outputs.src == 'true'
         run: go test ./... -v
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: health-mongo-sync
           push: false
@@ -136,15 +136,15 @@ jobs:
       run:
         working-directory: health-tandem-sync
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
             src:
               - 'health-tandem-sync/**'
       - if: steps.changes.outputs.src == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: health-tandem-sync/go.mod
           cache-dependency-path: health-tandem-sync/go.sum
@@ -158,9 +158,9 @@ jobs:
       - if: steps.changes.outputs.src == 'true'
         run: go test ./... -v
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: health-tandem-sync
           file: health-tandem-sync/Dockerfile.tandemsync
@@ -175,15 +175,15 @@ jobs:
       run:
         working-directory: health-fe
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
             src:
               - 'health-fe/**'
       - if: steps.changes.outputs.src == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -197,9 +197,9 @@ jobs:
       - if: steps.changes.outputs.src == 'true'
         run: npm run build
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - if: steps.changes.outputs.src == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: health-fe
           push: false
