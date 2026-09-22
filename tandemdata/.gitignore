@@ -1,8 +1,0 @@
-.env
-/tandemdata
-/tandemsync
-pumper-report-meta.json
-pump-logs-raw.json
-*.csv
-/tmp/
-/data/
