@@ -8,24 +8,47 @@ import {
   timeForX,
   nearest,
   parseTime,
+  cgmRange,
+  type CgmRange,
 } from "../chart/scale";
 
 interface Props {
   minMmol?: number;
+  // Ceiling of the tight target band (green). Must be <= maxMmol.
+  strictMaxMmol?: number;
   maxMmol?: number;
   refreshTick?: number; // increment to trigger a refresh of the current window
 }
 
-// Okabe-Ito colorblind-safe categorical palette: the CGM line, food-bolus
-// activity, and correction-bolus activity co-occur on/near the same panel,
-// so these three need to stay visually distinct under color-vision
-// deficiency. Basal is alone in its own panel and stays a plain gray.
-const COLOR_CGM = "#56b4e9"; // sky blue
+// Okabe-Ito colorblind-safe categorical palette (8 colors total — this
+// panel family already uses all the ones that read clearly as distinct
+// hues). Food-bolus activity, correction-bolus activity, and CGM bars
+// co-occur on/near the Sensor glucose panel: CGM bars are large fill
+// areas while dose markers are thin dashed lines + small dots, so a
+// shared hue between "in-range" bars and correction-bolus markers
+// doesn't create the confusion it would if both were filled shapes.
+// Basal is alone in its own panel and stays a plain gray.
 const COLOR_FOOD = "#e69f00"; // orange
 const COLOR_CORRECTION = "#009e73"; // bluish green
 const COLOR_BASAL = "#999999"; // muted gray
 const COLOR_LOW = "#d55e00"; // vermillion (out-of-range shading, low)
-const COLOR_HIGH = "#e69f00"; // orange (out-of-range shading, high) — reused, doesn't co-occur with food dots
+const COLOR_HIGH = "#e69f00"; // orange (out-of-range shading, high) — same as COLOR_FOOD, doesn't co-occur
+
+// CGM reading bars, colored per-reading by range (see chart/scale.ts's
+// cgmRange): green for the tight target band, amber for elevated-but-
+// not-critical, red for below the low threshold or above the medical
+// ceiling. This is a *status* palette (good/warning/critical), not a
+// categorical one — reusing COLOR_LOW/COLOR_HIGH (adjacent Okabe-Ito
+// hues, normal-vision ΔE ~15) was tried first and rejected: amber and
+// red need to be unmistakable per-bar at a glance across a dense 24h
+// window, and those two sit too close together (validated via
+// dataviz skill's validate_palette.js — see PR description). These
+// three are a fixed, pre-validated status set (ΔE ~27+ between
+// adjacent pairs on the dark surface this chart renders on), no
+// unused warning/serious/critical categories here.
+const COLOR_CGM_IN_RANGE = "#0ca30c"; // green (status: good)
+const COLOR_CGM_ELEVATED = "#fab219"; // amber (status: warning)
+const COLOR_CGM_CRITICAL = "#d03b3b"; // red (status: critical)
 
 const PANEL_HEIGHT_CGM = 220;
 const PANEL_HEIGHT_BASAL = 130;
@@ -34,6 +57,18 @@ const MARGIN = { top: 14, right: 10, bottom: 24, left: 44 };
 const MIN_PANEL_WIDTH = 280; // guards against a 0/negative-width first measurement
 const WINDOW_MS = WINDOW_HOURS * 3_600_000;
 const DATA_REFETCH_DEBOUNCE_MS = 250; // wait for a drag to settle before refetching
+
+/** Maps a CGM reading's range band to its bar color. */
+function colorForCgmRange(range: CgmRange): string {
+  switch (range) {
+    case "in-range":
+      return COLOR_CGM_IN_RANGE;
+    case "elevated":
+      return COLOR_CGM_ELEVATED;
+    case "critical":
+      return COLOR_CGM_CRITICAL;
+  }
+}
 
 function formatHour(epoch: number): string {
   return new Date(epoch).toLocaleTimeString([], {
@@ -87,11 +122,6 @@ function areaPath(points: { x: number; y: number }[], baselineY: number): string
   }
   d += ` L ${points[points.length - 1].x} ${baselineY} Z`;
   return d;
-}
-
-function linePath(points: { x: number; y: number }[]): string {
-  if (points.length === 0) return "";
-  return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
 }
 
 /** A legend chip: a small colored swatch (dot or square) plus a label. */
@@ -217,6 +247,7 @@ function ChartPanel({
 
 export default function GlucoseInsulinChart({
   minMmol = 4.0,
+  strictMaxMmol = 7.0,
   maxMmol = 10.0,
   refreshTick = 0,
 }: Props) {
@@ -446,10 +477,22 @@ export default function GlucoseInsulinChart({
       sortedCgmData.map((d) => ({
         x: xForTime(d.epoch, displayWindowStart, pxPerHr),
         y: yScale(d.mmol, cgmDomainMin, cgmDomainMax, cgmInnerHeight),
+        color: colorForCgmRange(cgmRange(d.mmol, minMmol, strictMaxMmol, maxMmol)),
         raw: d,
       })),
-    [sortedCgmData, displayWindowStart, pxPerHr, cgmInnerHeight]
+    [sortedCgmData, displayWindowStart, pxPerHr, cgmInnerHeight, minMmol, strictMaxMmol, maxMmol]
   );
+  // Bar width: proportional to the actual gap between consecutive
+  // readings (so a gap in the data — sensor warm-up, a dropped reading —
+  // doesn't stretch one bar across the gap), capped so bars don't touch
+  // at typical ~5-minute CGM intervals, with a sane floor so a single
+  // isolated reading (or the very first/last bar) still renders visibly.
+  const cgmBarWidth = useMemo(() => {
+    if (cgmPoints.length < 2) return 3;
+    const gaps = cgmPoints.slice(1).map((p, i) => p.x - cgmPoints[i].x);
+    const medianGap = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
+    return Math.max(1, Math.min(medianGap * 0.7, 6));
+  }, [cgmPoints]);
   const doseMarkers = useMemo(
     () =>
       doses.map((dose) => ({
@@ -621,8 +664,23 @@ export default function GlucoseInsulinChart({
             />
           ))}
 
-          {/* CGM line */}
-          <path d={linePath(cgmPoints)} fill="none" stroke={COLOR_CGM} strokeWidth={1.75} />
+          {/* CGM reading bars: one thin bar per sample, from the y=0
+              baseline up to its mmol value, colored by range (green =
+              in the tight target band, amber = elevated, red =
+              critical — see chart/scale.ts's cgmRange). Replaces a
+              continuous trend line so each reading's range status is
+              directly visible, at the cost of trend/slope being
+              harder to read at a glance than a line would give. */}
+          {cgmPoints.map((p) => (
+            <rect
+              key={`cgm-bar-${p.raw.epoch}`}
+              x={p.x - cgmBarWidth / 2}
+              y={p.y}
+              width={cgmBarWidth}
+              height={Math.max(0, cgmInnerHeight - p.y)}
+              fill={p.color}
+            />
+          ))}
 
           {/* dose dots along the top of the panel */}
           {doseMarkers.map(({ x, dose }) => (
@@ -908,7 +966,14 @@ export default function GlucoseInsulinChart({
                 {hoverCgm && (
                   <tr>
                     <td>
-                      <span className="chart-legend__swatch" style={{ background: COLOR_CGM }} />
+                      <span
+                        className="chart-legend__swatch"
+                        style={{
+                          background: colorForCgmRange(
+                            cgmRange(hoverCgm.mmol, minMmol, strictMaxMmol, maxMmol)
+                          ),
+                        }}
+                      />
                       CGM
                     </td>
                     <td className="chart-combined-tooltip__value">{hoverCgm.mmol.toFixed(1)} mmol/L</td>

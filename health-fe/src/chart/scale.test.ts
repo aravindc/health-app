@@ -7,6 +7,7 @@ import {
   nearest,
   parseTime,
   dayStart,
+  cgmRange,
 } from "./scale";
 
 describe("pxPerHour", () => {
@@ -111,6 +112,41 @@ describe("parseTime", () => {
 
   it("returns NaN for an unparseable string", () => {
     expect(parseTime("not-a-date")).toBeNaN();
+  });
+});
+
+describe("cgmRange", () => {
+  // Matches this repo's default thresholds (App.tsx / .env.example):
+  // min=4.0, strictMax=7.0, max=10.0.
+  const min = 4.0;
+  const strictMax = 7.0;
+  const max = 10.0;
+
+  it("classifies the tight target band as in-range", () => {
+    expect(cgmRange(4.0, min, strictMax, max)).toBe("in-range");
+    expect(cgmRange(5.5, min, strictMax, max)).toBe("in-range");
+    expect(cgmRange(7.0, min, strictMax, max)).toBe("in-range");
+  });
+
+  it("classifies above strictMax but within max as elevated", () => {
+    expect(cgmRange(7.1, min, strictMax, max)).toBe("elevated");
+    expect(cgmRange(8.5, min, strictMax, max)).toBe("elevated");
+    expect(cgmRange(10.0, min, strictMax, max)).toBe("elevated");
+  });
+
+  it("classifies below min as critical", () => {
+    expect(cgmRange(3.9, min, strictMax, max)).toBe("critical");
+    expect(cgmRange(0, min, strictMax, max)).toBe("critical");
+  });
+
+  it("classifies above max as critical", () => {
+    expect(cgmRange(10.1, min, strictMax, max)).toBe("critical");
+    expect(cgmRange(20, min, strictMax, max)).toBe("critical");
+  });
+
+  it("boundaries are inclusive at min and strictMax, matching the backend's mmol >= min && mmol <= strictMax", () => {
+    expect(cgmRange(min, min, strictMax, max)).toBe("in-range");
+    expect(cgmRange(strictMax, min, strictMax, max)).toBe("in-range");
   });
 });
 

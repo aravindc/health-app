@@ -58,6 +58,32 @@ export function parseTime(s: string): number {
   return new Date(s).getTime();
 }
 
+/**
+ * A CGM reading's glucose range band. Conceptually mirrors the
+ * backend's own in-range classification (health-api/handlers/
+ * handlers.go's getDataInWindow: MIN_MMOL/STRICT_MAX_MMOL/
+ * MEDICAL_MAX_MMOL), but this classifier keeps "elevated" and
+ * "critically out of range" as distinct bands (amber vs. red) rather
+ * than the backend's single in_range boolean, and stays independent of
+ * the backend's raw HSL point_color string so the chart can map each
+ * band to its own (Okabe-Ito colorblind-safe) palette.
+ */
+export type CgmRange = "in-range" | "elevated" | "critical";
+
+/**
+ * Classifies a glucose reading into in-range/elevated/critical bands:
+ *   mmol < min or mmol > max      -> "critical"  (below low, or above the outer/medical ceiling)
+ *   min <= mmol <= strictMax      -> "in-range"  (the tight target band)
+ *   strictMax < mmol <= max       -> "elevated"  (above target, not yet critical)
+ * Boundaries are inclusive at min/strictMax/max, matching the
+ * backend's `mmol >= minMmol && mmol <= strictMaxMmol` for in-range.
+ */
+export function cgmRange(mmol: number, min: number, strictMax: number, max: number): CgmRange {
+  if (mmol < min || mmol > max) return "critical";
+  if (mmol <= strictMax) return "in-range";
+  return "elevated";
+}
+
 /** Midnight (local time) epoch millis for a YYYY-MM-DD date string. */
 export function dayStart(dateStr: string): number {
   const [y, m, d] = dateStr.split("-").map(Number);
