@@ -65,6 +65,9 @@ export interface BolusDose {
   insulin_delivered: number;
   food_units: number;
   correction_units: number;
+  // Carbs (grams) entered for this dose; null when none was recorded
+  // (e.g. a correction-only bolus), not the same as 0g.
+  carb_amount: number | null;
   dominant_category: "food" | "correction";
 }
 

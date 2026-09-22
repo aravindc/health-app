@@ -57,6 +57,7 @@ const MARGIN = { top: 14, right: 10, bottom: 24, left: 44 };
 const MIN_PANEL_WIDTH = 280; // guards against a 0/negative-width first measurement
 const WINDOW_MS = WINDOW_HOURS * 3_600_000;
 const DATA_REFETCH_DEBOUNCE_MS = 250; // wait for a drag to settle before refetching
+const DOSE_HOVER_RADIUS_PX = 8; // hit-test slack around a dose dot/line for the combined tooltip
 
 /** Maps a CGM reading's range band to its bar color. */
 function colorForCgmRange(range: CgmRange): string {
@@ -558,6 +559,22 @@ export default function GlucoseInsulinChart({
     hoverTime !== null
       ? nearest(correctionActivity, hoverTime, (p) => parseTime(p.time))
       : null;
+  // The dose marker (if any) the pointer is actually over, by pixel
+  // distance rather than nearest-by-time: unlike CGM/activity (continuous
+  // samples every ~5min, so "nearest" is always something meaningful
+  // nearby), doses are sparse discrete events that can be hours apart, so
+  // "nearest dose" alone would show a dose from way outside the cursor's
+  // vicinity. DOSE_HOVER_RADIUS_PX matches the dose dot's drawn radius
+  // (see the `r={4}` circles below) plus a little slack for an easy hit.
+  const hoverDose =
+    hoverX !== null && !isDragging
+      ? doseMarkers.reduce<{ x: number; dose: BolusDose } | null>((closest, marker) => {
+          const dist = Math.abs(marker.x - (hoverX - MARGIN.left));
+          if (dist > DOSE_HOVER_RADIUS_PX) return closest;
+          if (!closest || dist < Math.abs(closest.x - (hoverX - MARGIN.left))) return marker;
+          return closest;
+        }, null)?.dose ?? null
+      : null;
 
   return (
     <div className="glucose-insulin-chart" ref={containerRef}>
@@ -952,7 +969,7 @@ export default function GlucoseInsulinChart({
       {!isDragging &&
         hoverTime !== null &&
         pointerPos &&
-        (hoverCgm || hoverBasal || hoverFood || hoverCorrection) && (
+        (hoverCgm || hoverBasal || hoverFood || hoverCorrection || hoverDose) && (
           <div
             className="chart-combined-tooltip"
             style={{
@@ -1009,6 +1026,33 @@ export default function GlucoseInsulinChart({
                       {hoverCorrection.units.toFixed(3)} U
                     </td>
                   </tr>
+                )}
+                {hoverDose && (
+                  <>
+                    <tr>
+                      <td>
+                        <span
+                          className="chart-legend__swatch"
+                          style={{
+                            background:
+                              hoverDose.dominant_category === "food" ? COLOR_FOOD : COLOR_CORRECTION,
+                          }}
+                        />
+                        {hoverDose.dominant_category === "food" ? "Food bolus" : "Correction bolus"}
+                      </td>
+                      <td className="chart-combined-tooltip__value">
+                        {hoverDose.insulin_delivered.toFixed(2)} U
+                      </td>
+                    </tr>
+                    {hoverDose.carb_amount !== null && (
+                      <tr>
+                        <td>Carbs</td>
+                        <td className="chart-combined-tooltip__value">
+                          {hoverDose.carb_amount.toFixed(0)} g
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 )}
               </tbody>
             </table>

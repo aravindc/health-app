@@ -89,6 +89,10 @@ type BolusDose struct {
 	InsulinDelivered float64   `json:"insulin_delivered"`
 	FoodUnits        float64   `json:"food_units"`
 	CorrectionUnits  float64   `json:"correction_units"`
+	// CarbAmount is the carbs (grams) entered for this dose, straight from
+	// tandem_bolus — null when none was recorded (e.g. a correction-only
+	// bolus with no carb entry), not the same as 0g.
+	CarbAmount *float64 `json:"carb_amount"`
 	// DominantCategory is "food" or "correction", whichever component is
 	// larger for this dose — used to color the dose's dot/dashed line.
 	DominantCategory string `json:"dominant_category"`
@@ -581,6 +585,7 @@ func (h *Handler) GetBolusRangeChart(c *gin.Context) {
 			InsulinDelivered: delivered,
 			FoodUnits:        round(food, 3),
 			CorrectionUnits:  round(correction, 3),
+			CarbAmount:       r.CarbAmount,
 			DominantCategory: dominant,
 		})
 
