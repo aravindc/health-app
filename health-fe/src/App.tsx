@@ -14,7 +14,8 @@ import type {
 import CurrentReading from "./components/CurrentReading";
 import GlucoseInsulinChart from "./components/GlucoseInsulinChart";
 import InsightsGrid from "./components/InsightsGrid";
-import Heatmap, { avgColor, tirColor } from "./components/Heatmap";
+import Heatmap from "./components/Heatmap";
+import { avgColor, tirColor } from "./heatmapColors";
 import "./App.css";
 
 const REFRESH_INTERVAL = 60_000;
@@ -65,6 +66,11 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // fetchData's setState calls all happen inside its async body, after
+    // awaiting Promise.allSettled — never synchronously during this effect
+    // — so this isn't the render-cascade pattern react-hooks/set-state-in-effect
+    // guards against; it's the standard fetch-on-mount-then-poll pattern.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
     const id = setInterval(fetchData, REFRESH_INTERVAL);
     return () => clearInterval(id);

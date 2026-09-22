@@ -1,0 +1,207 @@
+name: CI
+
+# One job per module (health-api, health-sync, health-mongo-sync,
+# health-tandem-sync, health-fe), each gated by a `paths` filter so a
+# change to one module doesn't trigger the others. Each Go job runs
+# build -> vet -> test using that module's own go.mod-declared version
+# (they differ per module, e.g. health-tandem-sync is ahead of
+# health-sync), then validates its Dockerfile builds. health-fe runs
+# lint -> test -> typecheck+build, then validates its Dockerfile builds.
+# See docker-compose.yml for the build contexts/dockerfiles this mirrors.
+#
+# Docker build steps are validation only (push: false) — they catch
+# Dockerfile drift (bad COPY paths, base image mismatches) that a plain
+# `go build`/`npm run build` wouldn't, but don't publish any image.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  health-api:
+    name: health-api
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: health-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'health-api/**'
+      - if: steps.changes.outputs.src == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: health-api/go.mod
+          cache-dependency-path: health-api/go.sum
+      - if: steps.changes.outputs.src == 'true'
+        run: go build ./...
+      - if: steps.changes.outputs.src == 'true'
+        run: go vet ./...
+      - if: steps.changes.outputs.src == 'true'
+        run: go test ./... -v
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: health-api
+          push: false
+          cache-from: type=gha,scope=health-api
+          cache-to: type=gha,mode=max,scope=health-api
+
+  health-sync:
+    name: health-sync
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: health-sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'health-sync/**'
+      - if: steps.changes.outputs.src == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: health-sync/go.mod
+          cache-dependency-path: health-sync/go.sum
+      - if: steps.changes.outputs.src == 'true'
+        run: go build ./...
+      - if: steps.changes.outputs.src == 'true'
+        run: go vet ./...
+      - if: steps.changes.outputs.src == 'true'
+        run: go test ./... -v
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: health-sync
+          push: false
+          cache-from: type=gha,scope=health-sync
+          cache-to: type=gha,mode=max,scope=health-sync
+
+  health-mongo-sync:
+    name: health-mongo-sync
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: health-mongo-sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'health-mongo-sync/**'
+      - if: steps.changes.outputs.src == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: health-mongo-sync/go.mod
+          cache-dependency-path: health-mongo-sync/go.sum
+      - if: steps.changes.outputs.src == 'true'
+        run: go build ./...
+      - if: steps.changes.outputs.src == 'true'
+        run: go vet ./...
+      - if: steps.changes.outputs.src == 'true'
+        run: go test ./... -v
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: health-mongo-sync
+          push: false
+          cache-from: type=gha,scope=health-mongo-sync
+          cache-to: type=gha,mode=max,scope=health-mongo-sync
+
+  health-tandem-sync:
+    name: health-tandem-sync
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: health-tandem-sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'health-tandem-sync/**'
+      - if: steps.changes.outputs.src == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: health-tandem-sync/go.mod
+          cache-dependency-path: health-tandem-sync/go.sum
+      # Builds both cmd/ binaries (tandemsync is what Dockerfile.tandemsync
+      # ships; tandemload is a manually-run host-side backfill tool per
+      # the root README) plus the rest of the module via ./...
+      - if: steps.changes.outputs.src == 'true'
+        run: go build ./...
+      - if: steps.changes.outputs.src == 'true'
+        run: go vet ./...
+      - if: steps.changes.outputs.src == 'true'
+        run: go test ./... -v
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: health-tandem-sync
+          file: health-tandem-sync/Dockerfile.tandemsync
+          push: false
+          cache-from: type=gha,scope=health-tandem-sync
+          cache-to: type=gha,mode=max,scope=health-tandem-sync
+
+  health-fe:
+    name: health-fe
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: health-fe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'health-fe/**'
+      - if: steps.changes.outputs.src == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: health-fe/package-lock.json
+      - if: steps.changes.outputs.src == 'true'
+        run: npm ci
+      - if: steps.changes.outputs.src == 'true'
+        run: npm run lint
+      - if: steps.changes.outputs.src == 'true'
+        run: npm test
+      - if: steps.changes.outputs.src == 'true'
+        run: npm run build
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: health-fe
+          push: false
+          cache-from: type=gha,scope=health-fe
+          cache-to: type=gha,mode=max,scope=health-fe

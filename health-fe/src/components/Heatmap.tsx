@@ -160,25 +160,3 @@ export default function Heatmap({ title, data, colorFn, labelFn }: Props) {
     </div>
   );
 }
-
-// Color functions for Daily Average heatmap
-export function avgColor(mmol: number, strict: boolean): string {
-  const low = 4.0;
-  const high = strict ? 7.0 : 10.0;
-
-  if (mmol < low) return "#c0392b";       // red — low
-  if (mmol <= high) return "#27ae60";        // green — in range
-  if (mmol <= high * 1.1) return "#e67e22";  // orange — slightly above
-  if (mmol <= high * 1.2) return "#d35400"; // dark orange — above
-  return "#c0392b";                         // red — high
-}
-
-// Color function for TIR heatmap
-export function tirColor(pir: number, _strict: boolean): string {
-  if (pir >= 85) return "#196f3d";   // dark green
-  if (pir >= 70) return "#27ae60";   // green
-  if (pir >= 55) return "#f1c40f";   // yellow
-  if (pir >= 40) return "#e67e22";   // orange
-  if (pir >= 25) return "#d35400";   // dark orange
-  return "#c0392b";                  // red
-}
