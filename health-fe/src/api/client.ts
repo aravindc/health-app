@@ -12,7 +12,9 @@ import type {
   BasalChart,
 } from "./types";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:9082";
+// Same-origin /api by default: nginx (and the Vite dev server) proxy it to
+// health-api.
+const BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 async function fetchJSON<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`);
