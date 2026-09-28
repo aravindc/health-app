@@ -7,7 +7,7 @@ services:
       - health_be
     restart: on-failure
     ports:
-      - "9084:5432"
+      - "127.0.0.1:9084:5432"
     env_file:
       - ./.env
     volumes:
@@ -68,7 +68,7 @@ services:
       - health_be
     build: ./health-api
     ports:
-      - "9082:8080"
+      - "127.0.0.1:9082:8080"
     restart: on-failure
     env_file:
       - ./.env
@@ -91,7 +91,7 @@ services:
       args:
         VITE_API_URL: http://localhost:9082
     ports:
-      - "9083:80"
+      - "127.0.0.1:9083:80"
     restart: on-failure
     depends_on:
       - health-api
@@ -101,7 +101,7 @@ services:
     networks:
       - health_be
     ports:
-      - "9085:8080"
+      - "127.0.0.1:9085:8080"
     volumes:
       - "./bytebase/data:/var/opt/bytebase:Z"
     restart: on-failure
