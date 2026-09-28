@@ -89,7 +89,9 @@ services:
     build:
       context: ./health-fe
       args:
-        VITE_API_URL: http://localhost:9082
+        # Used by the browser, not by containers. Behind a reverse proxy,
+        # set VITE_API_URL=/api (see docker-compose.caddy.yml).
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:9082}
     ports:
       - "127.0.0.1:9083:80"
     restart: on-failure
