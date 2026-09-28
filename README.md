@@ -86,6 +86,37 @@ subordinate UIDs, so removing them from the host needs
 uses `docker compose` if `docker` is on `PATH`, otherwise `podman compose`;
 set `COMPOSE="podman compose"` to force it.
 
+### Running behind Caddy
+
+If Caddy runs as a container in its own compose stack, add
+`docker-compose.caddy.yml` to join `health-fe` and `health-api` to Caddy's
+network. Caddy then proxies to them by service name, and the `127.0.0.1`
+host ports aren't involved:
+
+```bash
+CADDY_NETWORK=caddy_default VITE_API_URL=/api \
+  docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
+```
+
+- `CADDY_NETWORK` is the name of Caddy's network (list them with
+  `docker network ls`). It must already exist.
+- `VITE_API_URL=/api` makes the frontend call the API on its own origin
+  through Caddy. It's baked in at build time, hence `--build`.
+- Both variables can go in the root `.env` instead of the command line.
+
+Matching Caddyfile:
+
+```caddyfile
+health.example.com {
+    handle_path /api/* {
+        reverse_proxy health-api:8080
+    }
+    handle {
+        reverse_proxy health-fe:80
+    }
+}
+```
+
 ### Database schema
 
 `health-api` owns the database schema: on startup it runs any pending
@@ -181,8 +212,10 @@ done
 See each `.env.example` for the full, commented variable list — Dexcom
 Share credentials, glucose target ranges, MongoDB gap-fill settings, etc.
 are documented there rather than repeated here. `VITE_API_URL` is not read
-from any `.env`; it's a docker-compose build arg for `health-fe` (see
-`docker-compose.yml`).
+by any service at runtime; it's a docker-compose build arg for `health-fe`,
+baked into the frontend bundle at build time. It defaults to
+`http://localhost:9082` and can be overridden from the shell or the root
+`.env` (see [Running behind Caddy](#running-behind-caddy)).
 
 ## API Endpoints
 
