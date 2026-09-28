@@ -101,8 +101,10 @@ services:
     volumes:
       - "./bytebase/data:/var/opt/bytebase:Z"
     restart: on-failure
+# Pre-created outside compose (see README "Running"), so their names,
+# subnets and interfaces stay stable across `compose down`/`up`.
 networks:
   health_fe:
-    driver: bridge
+    external: true
   health_be:
-    driver: bridge
+    external: true
