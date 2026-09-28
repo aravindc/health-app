@@ -32,7 +32,9 @@ function App() {
   const [dailyAvg, setDailyAvg] = useState<DailyAvg[]>([]);
   const [dailyTir, setDailyTir] = useState<DailyTir[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [chartRefreshTick, setChartRefreshTick] = useState(0);
+  // When the data was last refreshed (epoch ms). The chart uses it both to
+  // refetch and, while following the latest data, as its window's end.
+  const [refreshedAt, setRefreshedAt] = useState(() => Date.now());
 
   const fetchData = useCallback(async () => {
     try {
@@ -59,7 +61,7 @@ function App() {
       if (dt.status === "fulfilled") setDailyTir(dt.value);
 
       setError(null);
-      setChartRefreshTick((t) => t + 1);
+      setRefreshedAt(Date.now());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch data");
     }
@@ -97,7 +99,7 @@ function App() {
       {error && <div className="dashboard__error">{error}</div>}
 
       <main className="dashboard__main">
-        <GlucoseInsulinChart refreshTick={chartRefreshTick} />
+        <GlucoseInsulinChart refreshedAt={refreshedAt} />
 
         <InsightsGrid
           avgMmol24h={avgMmol24h}

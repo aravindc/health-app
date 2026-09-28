@@ -17,8 +17,15 @@ interface Props {
   // Ceiling of the tight target band (green). Must be <= maxMmol.
   strictMaxMmol?: number;
   maxMmol?: number;
-  refreshTick?: number; // increment to trigger a refresh of the current window
+  // Epoch ms of the parent's latest data refresh. Each new value refetches
+  // the current window, and while following the latest data (the default)
+  // the window ends at this time, so new readings appear.
+  refreshedAt: number;
 }
+
+// How close to "now" a committed window must end to count as following
+// the latest data (absorbs time passing between the gesture and its commit).
+const LATEST_TOLERANCE_MS = 30_000;
 
 // Okabe-Ito colorblind-safe categorical palette (8 colors total — this
 // panel family already uses all the ones that read clearly as distinct
@@ -250,13 +257,20 @@ export default function GlucoseInsulinChart({
   minMmol = 4.0,
   strictMaxMmol = 7.0,
   maxMmol = 10.0,
-  refreshTick = 0,
+  refreshedAt,
 }: Props) {
   // windowStart is a continuous epoch-ms timestamp (not a whole-day
   // index): dragging any panel slides it by an arbitrary amount, so the
   // visible window can be e.g. "yesterday 11pm to today 11pm" rather than
-  // always being calendar-day-aligned. Defaults to "now - 24h".
-  const [windowStart, setWindowStart] = useState(() => Date.now() - WINDOW_MS);
+  // always being calendar-day-aligned.
+  //
+  // While followLatest is on (the default, and again after "Latest" or
+  // panning back to now) the window is derived from refreshedAt, so it
+  // advances with every data refresh and new readings appear. Panning or
+  // jumping away from now pins it at pinnedStart until the user returns.
+  const [followLatest, setFollowLatest] = useState(true);
+  const [pinnedStart, setPinnedStart] = useState(() => Date.now() - WINDOW_MS);
+  const windowStart = followLatest ? refreshedAt - WINDOW_MS : pinnedStart;
   const [earliestStart, setEarliestStart] = useState<number | null>(null);
   const [cgmData, setCgmData] = useState<DataPoint[]>([]);
   const [doses, setDoses] = useState<BolusDose[]>([]);
@@ -370,22 +384,31 @@ export default function GlucoseInsulinChart({
     }
   }, []);
 
-  // Refetch when the (committed) window moves, or the parent triggers a
-  // refresh (tick changes) — debounced so a drag gesture doesn't fire a
-  // request per pixel; only the settled position after mouseup does.
+  // Refetch when the (committed) window moves, or the parent refreshes its
+  // data (refreshedAt changes; while following the latest data that also
+  // moves the window) — debounced so a drag gesture doesn't fire a request
+  // per pixel; only the settled position after mouseup does.
   useEffect(() => {
     const id = setTimeout(() => fetchWindow(windowStart, windowStart + WINDOW_MS), DATA_REFETCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [windowStart, refreshTick, fetchWindow]);
+  }, [windowStart, refreshedAt, fetchWindow]);
+
+  // Commit a new window start from a pan or jump: clamp it, then follow
+  // the latest data if it ends at (about) now, otherwise pin it there.
+  const commitWindowStart = (start: number) => {
+    const clamped = clampWindowStart(start);
+    setPinnedStart(clamped);
+    setFollowLatest(clamped >= latestWindowStart() - LATEST_TOLERANCE_MS);
+  };
 
   // --- Coarse ±24h jump buttons ---
-  const goFirst = () => setWindowStart((w) => clampWindowStart(earliestStart ?? w));
-  const goBack = () => setWindowStart((w) => clampWindowStart(w - WINDOW_MS));
-  const goForward = () => setWindowStart((w) => clampWindowStart(w + WINDOW_MS));
-  const goLatest = () => setWindowStart(() => clampWindowStart(latestWindowStart()));
+  const goFirst = () => commitWindowStart(earliestStart ?? windowStart);
+  const goBack = () => commitWindowStart(windowStart - WINDOW_MS);
+  const goForward = () => commitWindowStart(windowStart + WINDOW_MS);
+  const goLatest = () => setFollowLatest(true);
 
   const atEarliest = earliestStart !== null && windowStart <= earliestStart;
-  const atLatest = windowStart >= latestWindowStart() - 30_000; // small tolerance for time passing between renders
+  const atLatest = followLatest;
 
   // --- Drag-to-pan handlers, shared by all three panels ---
   const beginDrag = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -408,7 +431,7 @@ export default function GlucoseInsulinChart({
     if (!draggingRef.current) return;
     draggingRef.current = false;
     setIsDragging(false);
-    setWindowStart(clampWindowStart(dragStartWindowRef.current + dragOffsetMs));
+    commitWindowStart(dragStartWindowRef.current + dragOffsetMs);
     setDragOffsetMs(0);
   };
 
