@@ -44,7 +44,16 @@ Podman, substitute `podman compose` for `docker compose` in every command
 below.
 
 1. Fill in your credentials in each service's own `.env` file (see [Configuration](#configuration) below).
-2. Start all services:
+2. Create the two networks once. They're declared `external: true` in
+   `docker-compose.yml`, so compose uses them but never creates or removes
+   them (with Podman, use `podman network create`):
+
+   ```bash
+   docker network create health_fe
+   docker network create health_be
+   ```
+
+3. Start all services:
 
 ```bash
 docker compose up -d
