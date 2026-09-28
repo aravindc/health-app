@@ -79,12 +79,12 @@ The compose file and Dockerfiles work unchanged under Podman:
 - `health-api`'s healthcheck lives in `docker-compose.yml`, not its
   Dockerfile — Podman builds OCI-format images by default, which drop
   `HEALTHCHECK`, and the `service_healthy` dependencies below rely on it.
-- Bind mounts (`health-db/pg_data`, `bytebase/data`) carry `:Z` so they're
+- Bind mounts (`health-db/data`, `bytebase/data`) carry `:Z` so they're
   relabeled on SELinux hosts (Fedora/RHEL); it's a no-op elsewhere.
 
 Under rootless Podman, files in those bind-mounted directories are owned by
 subordinate UIDs, so removing them from the host needs
-`podman unshare rm -rf health-db/pg_data`. `health-tandem-sync/run-tandemload.sh`
+`podman unshare rm -rf health-db/data`. `health-tandem-sync/run-tandemload.sh`
 uses `docker compose` if `docker` is on `PATH`, otherwise `podman compose`;
 set `COMPOSE="podman compose"` to force it.
 

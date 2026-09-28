@@ -1,6 +1,8 @@
 services:
   health-db:
-    image: docker.io/library/postgres:latest
+    # Pinned to a major version: moving to a new one needs a dump/restore or
+    # pg_upgrade, since Postgres can't open another major's data files.
+    image: docker.io/library/postgres:18
     networks:
       - health_be
     restart: on-failure
@@ -9,7 +11,9 @@ services:
     env_file:
       - ./.env
     volumes:
-      - "./health-db/pg_data:/var/lib/postgresql/data:Z"
+      # 18+ images keep data in /var/lib/postgresql/<major>/docker, so the
+      # volume goes on /var/lib/postgresql (mounting .../data is rejected).
+      - "./health-db/data:/var/lib/postgresql:Z"
   health-sync:
     networks:
       - health_be

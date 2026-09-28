@@ -3,4 +3,5 @@
 !.env.example
 load_old_ns.sh
 ns_out.csv
-tandemdata/
+tandemdata/health-db/
+bytebase/data/
