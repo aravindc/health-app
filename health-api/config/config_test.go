@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -110,5 +111,58 @@ func TestLoadConfig_APIKeysSkipsEmptyEntries(t *testing.T) {
 		if cfg.APIKeys[i] != k {
 			t.Errorf("APIKeys[%d] = %q, want %q", i, cfg.APIKeys[i], k)
 		}
+	}
+}
+
+func TestLoadConfig_CORSAllowedOriginsParsedAndTrimmed(t *testing.T) {
+	setEnv(t, map[string]string{
+		"NS_ENV":               "production",
+		"CORS_ALLOWED_ORIGINS": " https://health.example.com, ,http://localhost:3000 ",
+	})
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	want := []string{"https://health.example.com", "http://localhost:3000"}
+	if !slices.Equal(cfg.CORSAllowedOrigins, want) {
+		t.Errorf("CORSAllowedOrigins = %v, want %v", cfg.CORSAllowedOrigins, want)
+	}
+}
+
+func TestLoadConfig_CORSAllowedOriginsDefaults(t *testing.T) {
+	tests := []struct {
+		appEnv string
+		want   []string
+	}{
+		{"production", defaultProdCORSOrigins},
+		{"development", defaultDevCORSOrigins},
+		{"", defaultDevCORSOrigins},
+	}
+	for _, tt := range tests {
+		t.Run("NS_ENV="+tt.appEnv, func(t *testing.T) {
+			setEnv(t, map[string]string{
+				"NS_ENV":               tt.appEnv,
+				"CORS_ALLOWED_ORIGINS": "",
+			})
+
+			cfg, err := LoadConfig()
+			if err != nil {
+				t.Fatalf("LoadConfig failed: %v", err)
+			}
+			if !slices.Equal(cfg.CORSAllowedOrigins, tt.want) {
+				t.Errorf("CORSAllowedOrigins = %v, want %v", cfg.CORSAllowedOrigins, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_CORSAllowedOriginsRejectsMissingScheme(t *testing.T) {
+	setEnv(t, map[string]string{
+		"CORS_ALLOWED_ORIGINS": "https://ok.example.com,health.example.com",
+	})
+
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("expected an error for an origin without http:// or https://")
 	}
 }
