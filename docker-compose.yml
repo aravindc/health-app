@@ -1,5 +1,10 @@
+# Every service sets container_name to its service name, so containers are
+# named e.g. "health-db" instead of "health-app_health-db_1" (podman-compose)
+# or "health-app-health-db-1" (Docker Compose). Container names are unique
+# per engine: only one copy of this stack can run on a host at a time.
 services:
   health-db:
+    container_name: health-db
     # Pinned to a major version: moving to a new one needs a dump/restore or
     # pg_upgrade, since Postgres can't open another major's data files.
     image: docker.io/library/postgres:18
@@ -15,6 +20,7 @@ services:
       # volume goes on /var/lib/postgresql (mounting .../data is rejected).
       - "./health-db/data:/var/lib/postgresql:Z"
   health-sync:
+    container_name: health-sync
     networks:
       - health_be
     build: ./health-sync
@@ -30,6 +36,7 @@ services:
       health-api:
         condition: service_healthy
   health-mongo-sync:
+    container_name: health-mongo-sync
     networks:
       - health_be
     build: ./health-mongo-sync
@@ -45,6 +52,7 @@ services:
       health-api:
         condition: service_healthy
   health-tandem-sync:
+    container_name: health-tandem-sync
     networks:
       - health_be
     build:
@@ -63,6 +71,7 @@ services:
       health-api:
         condition: service_healthy
   health-api:
+    container_name: health-api
     networks:
       - health_fe
       - health_be
@@ -84,6 +93,7 @@ services:
     depends_on:
       - health-db
   health-fe:
+    container_name: health-fe
     networks:
       - health_fe
     build:
@@ -103,6 +113,7 @@ services:
         condition: service_healthy
         restart: true
   bytebase:
+    container_name: bytebase
     image: docker.io/bytebase/bytebase:latest
     init: true
     networks:

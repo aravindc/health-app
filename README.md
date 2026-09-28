@@ -74,6 +74,13 @@ whenever `health-api` is recreated. If your compose tool ignores
 (`up -d --build health-api health-fe`), or `/api` returns 502 until
 `health-fe` restarts.
 
+Containers are named after their services (`health-db`, `health-api`, …,
+via `container_name:`), so plain engine commands work without the
+compose-generated prefix, e.g. `docker logs -f health-api` or
+`podman exec -it health-db psql -U <user> <db>`. Container names are
+unique per engine, so only one copy of the stack can run on a host at a
+time.
+
 Bytebase has no `.env` — its admin account and the `health-db` connection
 are both set up through its own first-run web UI at http://localhost:9085,
 not via config.
