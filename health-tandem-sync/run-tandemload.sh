@@ -9,9 +9,10 @@
 #   ./run-tandemload.sh                      # full available history
 #   ./run-tandemload.sh -start 2024-01-01    # explicit range, any tandemload flag
 #
-# Requires: health-db running via docker compose (for the port mapping
-# lookup below), TANDEM_USERNAME/PASSWORD set in health-tandem-sync/.env,
-# and Go installed locally (this runs `go run`, not a container).
+# Requires: health-db running via docker compose or podman compose (for the
+# port mapping lookup below; set COMPOSE="podman compose" etc. to force
+# one), TANDEM_USERNAME/PASSWORD set in health-tandem-sync/.env, and Go
+# installed locally (this runs `go run`, not a container).
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,13 +20,26 @@ cd "$script_dir"
 
 repo_root="$(cd .. && pwd)"
 
-# Ask docker compose for health-db's actual host-mapped port instead of
+# Pick a compose command: $COMPOSE if set, else docker compose, else
+# podman compose.
+if [ -n "${COMPOSE:-}" ]; then
+    read -r -a compose_cmd <<<"$COMPOSE"
+elif command -v docker >/dev/null 2>&1; then
+    compose_cmd=(docker compose)
+elif command -v podman >/dev/null 2>&1; then
+    compose_cmd=(podman compose)
+else
+    echo "error: neither docker nor podman found; set COMPOSE to your compose command." >&2
+    exit 1
+fi
+
+# Ask compose for health-db's actual host-mapped port instead of
 # hardcoding 9084, so this doesn't silently go stale if docker-compose.yml's
 # port mapping ever changes.
-health_db_addr="$(cd "$repo_root" && docker compose port health-db 5432 2>/dev/null || true)"
+health_db_addr="$(cd "$repo_root" && "${compose_cmd[@]}" port health-db 5432 2>/dev/null | tail -1 || true)"
 if [ -z "$health_db_addr" ]; then
-    echo "error: could not determine health-db's host port via 'docker compose port health-db 5432'." >&2
-    echo "       Is health-db running? Try: docker compose up -d health-db" >&2
+    echo "error: could not determine health-db's host port via '${compose_cmd[*]} port health-db 5432'." >&2
+    echo "       Is health-db running? Try: ${compose_cmd[*]} up -d health-db" >&2
     exit 1
 fi
 host_port="${health_db_addr##*:}"

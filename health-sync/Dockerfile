@@ -1,4 +1,4 @@
-FROM golang:1.27-alpine AS builder
+FROM docker.io/library/golang:1.27-alpine AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o health-sync .
 
-FROM alpine:3.21
+FROM docker.io/library/alpine:3.21
 
 RUN apk add --no-cache ca-certificates tzdata
 

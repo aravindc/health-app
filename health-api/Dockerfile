@@ -1,4 +1,4 @@
-FROM golang:1.27-alpine AS builder
+FROM docker.io/library/golang:1.27-alpine AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o health-api .
 
-FROM alpine:3.21
+FROM docker.io/library/alpine:3.21
 
 RUN apk add --no-cache ca-certificates tzdata wget
 
@@ -17,7 +17,9 @@ COPY --from=builder /app/health-api .
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=5s --timeout=3s --start-period=30s --retries=6 \
-    CMD wget -q -O /dev/null http://localhost:8080/health || exit 1
+# The healthcheck lives in docker-compose.yml, not here: Podman builds OCI
+# images by default, and the OCI format has no HEALTHCHECK field, so a
+# Dockerfile HEALTHCHECK would be silently dropped under Podman. wget is
+# kept installed for that compose healthcheck.
 
 ENTRYPOINT ["./health-api"]

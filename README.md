@@ -34,11 +34,14 @@ health-tandem-sync/  Go services (Tandem Source → PostgreSQL insulin + CGM dat
 | Database     | PostgreSQL (partitioned by month)    |
 | Dexcom sync  | Go, Dexcom Share API                 |
 | MongoDB sync | Go, MongoDB driver                   |
-| Infra        | Docker Compose, nginx, Bytebase      |
+| Infra        | Docker/Podman Compose, nginx, Bytebase |
 
 ## Running
 
-**Prerequisites:** Docker and Docker Compose.
+**Prerequisites:** Docker with Docker Compose, or Podman (4.7+) with
+`podman compose` (backed by `podman-compose` or `docker-compose`). With
+Podman, substitute `podman compose` for `docker compose` in every command
+below.
 
 1. Fill in your credentials in each service's own `.env` file (see [Configuration](#configuration) below).
 2. Start all services:
@@ -58,6 +61,24 @@ Bytebase has no `.env` — its admin account and the `health-db` connection
 are both set up through its own first-run web UI at http://localhost:9085,
 not via config.
 
+### Running with Podman
+
+The compose file and Dockerfiles work unchanged under Podman:
+
+- Base images are fully qualified (`docker.io/library/...`), so Podman never
+  has to resolve short names or prompt for a registry.
+- `health-api`'s healthcheck lives in `docker-compose.yml`, not its
+  Dockerfile — Podman builds OCI-format images by default, which drop
+  `HEALTHCHECK`, and the `service_healthy` dependencies below rely on it.
+- Bind mounts (`health-db/pg_data`, `bytebase/data`) carry `:Z` so they're
+  relabeled on SELinux hosts (Fedora/RHEL); it's a no-op elsewhere.
+
+Under rootless Podman, files in those bind-mounted directories are owned by
+subordinate UIDs, so removing them from the host needs
+`podman unshare rm -rf health-db/pg_data`. `health-tandem-sync/run-tandemload.sh`
+uses `docker compose` if `docker` is on `PATH`, otherwise `podman compose`;
+set `COMPOSE="podman compose"` to force it.
+
 ### Database schema
 
 `health-api` owns the database schema: on startup it runs any pending
@@ -67,7 +88,7 @@ not via config.
 init step, no `docker-entrypoint-initdb.d` scripts). `health-sync`,
 `health-mongo-sync`, and `health-tandem-sync` all `depends_on: health-api` with a
 `service_healthy` condition (backed by `health-api`'s `/health` endpoint and
-a Docker healthcheck), so Compose won't start them until migrations have
+a healthcheck defined in `docker-compose.yml`), so Compose won't start them until migrations have
 finished — avoiding a race where they'd try to write to tables that don't
 exist yet on a truly fresh database.
 
