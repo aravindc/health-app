@@ -105,10 +105,19 @@ services:
     volumes:
       - "./bytebase/data:/var/opt/bytebase:Z"
     restart: on-failure
-# Pre-created outside compose (see README "Running"), so their names,
-# subnets and interfaces stay stable across `compose down`/`up`.
+# Created by compose on `up`. Fixed names (no project prefix) and subnets
+# keep them stable across `down`/`up` and between Docker and Podman, so
+# host firewall rules can match on the subnet.
 networks:
   health_fe:
-    external: true
+    name: health_fe
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.2.0/24
   health_be:
-    external: true
+    name: health_be
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.3.0/24
