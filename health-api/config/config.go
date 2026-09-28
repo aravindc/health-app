@@ -17,6 +17,32 @@ type Config struct {
 	MedicalMaxMmol string
 	AppEnv         string
 	APIKeys        []string
+	// CORSAllowedOrigins is the browser origins allowed to call the API
+	// cross-origin: CORS_ALLOWED_ORIGINS if set, else the defaults for AppEnv.
+	CORSAllowedOrigins []string
+}
+
+// Default CORS origins, used when CORS_ALLOWED_ORIGINS is unset.
+var (
+	defaultProdCORSOrigins = []string{"https://ui.health.pers.dev"}
+	defaultDevCORSOrigins  = []string{
+		"http://localhost:5173",
+		"http://localhost:4000",
+		"http://health-ui:9093",
+		"http://localhost:9083",
+	}
+)
+
+// splitCSV splits a comma-separated list, trimming spaces and dropping
+// empty entries. Returns nil for an empty string.
+func splitCSV(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 // LoadConfig loads configuration from .env.local
@@ -37,21 +63,30 @@ func LoadConfig() (*Config, error) {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
 		postgresHost, postgresUser, postgresPass, postgresDB, postgresPort)
 
-	var apiKeys []string
-	if keys := os.Getenv("API_KEYS"); keys != "" {
-		for _, k := range strings.Split(keys, ",") {
-			if trimmed := strings.TrimSpace(k); trimmed != "" {
-				apiKeys = append(apiKeys, trimmed)
-			}
+	apiKeys := splitCSV(os.Getenv("API_KEYS"))
+
+	appEnv := os.Getenv("NS_ENV")
+	corsOrigins := splitCSV(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	for _, o := range corsOrigins {
+		if !strings.HasPrefix(o, "http://") && !strings.HasPrefix(o, "https://") {
+			return nil, fmt.Errorf("CORS_ALLOWED_ORIGINS: %q must start with http:// or https://", o)
+		}
+	}
+	if len(corsOrigins) == 0 {
+		if appEnv == "production" {
+			corsOrigins = defaultProdCORSOrigins
+		} else {
+			corsOrigins = defaultDevCORSOrigins
 		}
 	}
 
 	return &Config{
-		DSN:            dsn,
-		MinMmol:        os.Getenv("MIN_MMOL"),
-		StrictMaxMmol:  os.Getenv("STRICT_MAX_MMOL"),
-		MedicalMaxMmol: os.Getenv("MEDICAL_MAX_MMOL"),
-		AppEnv:         os.Getenv("NS_ENV"),
-		APIKeys:        apiKeys,
+		DSN:                dsn,
+		MinMmol:            os.Getenv("MIN_MMOL"),
+		StrictMaxMmol:      os.Getenv("STRICT_MAX_MMOL"),
+		MedicalMaxMmol:     os.Getenv("MEDICAL_MAX_MMOL"),
+		AppEnv:             appEnv,
+		APIKeys:            apiKeys,
+		CORSAllowedOrigins: corsOrigins,
 	}, nil
 }

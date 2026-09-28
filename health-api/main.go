@@ -80,16 +80,7 @@ func main() {
 
 	// 4. Add CORS Middleware
 	corsConfig := cors.DefaultConfig()
-	if cfg.AppEnv == "production" {
-		corsConfig.AllowOrigins = []string{"https://ui.health.pers.dev"}
-	} else {
-		corsConfig.AllowOrigins = []string{
-			"http://localhost:5173",
-			"http://localhost:4000",
-			"http://health-ui:9093",
-			"http://localhost:9083",
-		}
-	}
+	corsConfig.AllowOrigins = cfg.CORSAllowedOrigins
 	corsConfig.AllowCredentials = true
 	corsConfig.AllowMethods = []string{"GET", "PUT", "OPTIONS"}
 	corsConfig.AllowHeaders = []string{"*"}
