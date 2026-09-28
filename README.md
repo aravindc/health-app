@@ -59,6 +59,11 @@ docker compose up -d
 | Bytebase | http://localhost:9085       |
 | Database | localhost:9084 (PostgreSQL) |
 
+All four ports are published on `127.0.0.1` only, so they're reachable from
+this host but not from the rest of the network. To reach them from another
+machine, use an SSH tunnel (e.g. `ssh -L 9083:localhost:9083 <host>`) rather
+than changing the bindings.
+
 Bytebase has no `.env` — its admin account and the `health-db` connection
 are both set up through its own first-run web UI at http://localhost:9085,
 not via config.
