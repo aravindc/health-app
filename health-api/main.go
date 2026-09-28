@@ -84,6 +84,13 @@ func main() {
 	corsConfig.AllowCredentials = true
 	corsConfig.AllowMethods = []string{"GET", "PUT", "OPTIONS"}
 	corsConfig.AllowHeaders = []string{"*"}
+	// Only called for origins not in AllowOrigins: log them so a 403 shows
+	// what the browser actually sent, then reject as before.
+	corsConfig.AllowOriginWithContextFunc = func(c *gin.Context, origin string) bool {
+		slog.Warn("CORS origin rejected", "origin", origin, "host", c.Request.Host, "path", c.Request.URL.Path)
+		return false
+	}
+	slog.Info("CORS allowed origins", "origins", cfg.CORSAllowedOrigins)
 	r.Use(cors.New(corsConfig))
 
 	// 5. Add metrics and rate limiting middleware
