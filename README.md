@@ -55,7 +55,7 @@ docker compose up -d
 | Service  | URL                        |
 |----------|----------------------------|
 | Frontend | http://localhost:9083       |
-| API      | http://localhost:9082       |
+| API      | http://localhost:9083/api (via the frontend's nginx), or directly at http://localhost:9082 |
 | Bytebase | http://localhost:9085       |
 | Database | localhost:9084 (PostgreSQL) |
 
@@ -63,6 +63,16 @@ All four ports are published on `127.0.0.1` only, so they're reachable from
 this host but not from the rest of the network. To reach them from another
 machine, use an SSH tunnel (e.g. `ssh -L 9083:localhost:9083 <host>`) rather
 than changing the bindings.
+
+The frontend calls the API at `/api` on its own origin: `health-fe`'s nginx
+forwards `/api/*` to `health-api:8080` with the `/api` prefix stripped
+(see [`health-fe/nginx.conf`](health-fe/nginx.conf)), so the browser never
+makes a cross-origin request and no CORS setup is needed. nginx looks up
+`health-api`'s address once when it starts, so compose restarts `health-fe`
+whenever `health-api` is recreated. If your compose tool ignores
+`depends_on: restart: true`, redeploy both together
+(`up -d --build health-api health-fe`), or `/api` returns 502 until
+`health-fe` restarts.
 
 Bytebase has no `.env` — its admin account and the `health-db` connection
 are both set up through its own first-run web UI at http://localhost:9085,
@@ -89,33 +99,30 @@ set `COMPOSE="podman compose"` to force it.
 ### Running behind Caddy
 
 If Caddy runs as a container in its own compose stack, add
-`docker-compose.caddy.yml` to join `health-fe` and `health-api` to Caddy's
-network. Caddy then proxies to them by service name, and the `127.0.0.1`
-host ports aren't involved:
+`docker-compose.caddy.yml` to join `health-fe` to Caddy's network. Caddy
+proxies everything to `health-fe`, whose nginx serves the UI and forwards
+`/api` to `health-api`, so the `127.0.0.1` host ports aren't involved:
 
 ```bash
-CADDY_NETWORK=caddy_default VITE_API_URL=/api \
+CADDY_NETWORK=caddy_default \
   docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 ```
 
-- `CADDY_NETWORK` is the name of Caddy's network (list them with
-  `docker network ls`). It must already exist.
-- `VITE_API_URL=/api` makes the frontend call the API on its own origin
-  through Caddy. It's baked in at build time, hence `--build`.
-- Both variables can go in the root `.env` instead of the command line.
+`CADDY_NETWORK` is the name of Caddy's network (list them with
+`docker network ls`). It must already exist, and can go in the root `.env`
+instead of the command line.
 
 Matching Caddyfile:
 
 ```caddyfile
 health.example.com {
-    handle_path /api/* {
-        reverse_proxy health-api:8080
-    }
-    handle {
-        reverse_proxy health-fe:80
-    }
+    reverse_proxy health-fe:80
 }
 ```
+
+Caddy passes the original `Host` header through by default. Keep it that
+way (no `header_up Host ...`): `health-api` treats a request as same-origin
+only when the browser's `Origin` matches that `Host`.
 
 ### Database schema
 
@@ -213,9 +220,10 @@ See each `.env.example` for the full, commented variable list — Dexcom
 Share credentials, glucose target ranges, MongoDB gap-fill settings, etc.
 are documented there rather than repeated here. `VITE_API_URL` is not read
 by any service at runtime; it's a docker-compose build arg for `health-fe`,
-baked into the frontend bundle at build time. It defaults to
-`http://localhost:9082` and can be overridden from the shell or the root
-`.env` (see [Running behind Caddy](#running-behind-caddy)).
+baked into the frontend bundle at build time. It defaults to `/api`
+(proxied by `health-fe`'s nginx, and by the Vite dev server for
+`npm run dev`) and only needs overriding, from the shell or the root
+`.env`, to point the UI at an API on another origin.
 
 ## API Endpoints
 

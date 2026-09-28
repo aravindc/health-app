@@ -27,7 +27,7 @@ describe("api client URL construction", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url] = fetchMock.mock.calls[0];
     expect(url).toBe(
-      "http://localhost:9082/chart?from=2026-09-21T07%3A00%3A00.000Z&to=2026-09-22T07%3A00%3A00.000Z"
+      "/api/chart?from=2026-09-21T07%3A00%3A00.000Z&to=2026-09-22T07%3A00%3A00.000Z"
     );
   });
 
@@ -58,7 +58,7 @@ describe("api client URL construction", () => {
 
     await api.getLastXh(24);
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:9082/lastxh/24");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/lastxh/24");
   });
 
   it("getLastXhOffset builds a path with both hours and offset", async () => {
@@ -67,7 +67,7 @@ describe("api client URL construction", () => {
 
     await api.getLastXhOffset(24, 12);
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:9082/lastxh/24/offset/12");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/lastxh/24/offset/12");
   });
 
   it("throws with status text on a non-OK response instead of parsing JSON", async () => {

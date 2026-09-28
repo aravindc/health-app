@@ -1,19 +1,17 @@
 # Optional override for running behind a Caddy reverse proxy that lives in
-# its own compose stack. Joins health-fe and health-api to Caddy's network
-# so Caddy can proxy to them by service name (health-fe:80,
-# health-api:8080) without going through host ports.
+# its own compose stack. Joins health-fe to Caddy's network so Caddy can
+# proxy to it by service name (health-fe:80) without going through host
+# ports. health-fe's nginx forwards /api to health-api itself, so
+# health-api doesn't need to be on Caddy's network.
 #
 # Usage (see README "Running behind Caddy"):
-#   CADDY_NETWORK=<caddy's network> VITE_API_URL=/api \
+#   CADDY_NETWORK=<caddy's network> \
 #     docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 #
 # Kept out of docker-compose.yml because an external network must already
 # exist, which would break `up` on machines without Caddy.
 services:
   health-fe:
-    networks:
-      - caddy
-  health-api:
     networks:
       - caddy
 networks:
