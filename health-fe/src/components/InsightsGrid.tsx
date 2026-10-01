@@ -1,58 +1,52 @@
+import { useState } from "react";
 import InsightCard from "./InsightCard";
 import MiniSparkline from "./MiniSparkline";
 import QuartileCurve from "./QuartileCurve";
+import { api } from "../api/client";
+import { useCachedFetch, type Fetched } from "../api/useCachedFetch";
+import { periodById, type PeriodId } from "../insights/periods";
 import type {
-  AvgMmol,
-  QuartPoint,
   GmiResponse,
-  PercentInRange,
-  SparklinePoint,
-  DataPoint,
+  InsightStats,
+  RangeSplit,
 } from "../api/types";
 
 interface Props {
-  avgMmol24h: AvgMmol | null;
-  quartiles: QuartPoint[];
+  // App's default-period data, refreshed every minute: the 24h values and
+  // the 90-day GMI. Other periods are fetched here when a card picks one.
+  stats24h: InsightStats | null;
   gmi: GmiResponse | null;
-  percentInRange: PercentInRange[];
-  sparkline24h: SparklinePoint[];
-  dataPoints24h: DataPoint[];
+  // App's last refresh (epoch ms); prompts stale non-default data to refetch.
+  refreshedAt: number;
 }
 
-function computeStats(points: DataPoint[]) {
-  if (points.length === 0) return { median: 0, stdDev: 0, cv: 0, count: 0 };
-  const values = points.map((p) => p.mmol).sort((a, b) => a - b);
-  const n = values.length;
-  const median =
-    n % 2 === 0
-      ? (values[n / 2 - 1] + values[n / 2]) / 2
-      : values[Math.floor(n / 2)];
-  const mean = values.reduce((s, v) => s + v, 0) / n;
-  const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / n;
-  const stdDev = Math.sqrt(variance);
-  const cv = mean > 0 ? (stdDev / mean) * 100 : 0;
-  return { median, stdDev, cv, count: n };
-}
+type CardId =
+  | "pir" | "avg" | "mini" | "quart" | "normal" | "strict" | "gmi"
+  | "unicorns" | "highsLows" | "median" | "stdDev" | "cv" | "flux";
 
-function getQuartileSummary(points: QuartPoint[]) {
-  if (points.length === 0) return { q1: 0, q2: 0, q3: 0 };
-  const values = points.map((p) => p.value).sort((a, b) => a - b);
-  const n = values.length;
-  const q1 = values[Math.floor(n * 0.25)] ?? 0;
-  const q2 = values[Math.floor(n * 0.5)] ?? 0;
-  const q3 = values[Math.floor(n * 0.75)] ?? 0;
-  return { q1, q2, q3 };
-}
+const DEFAULT_PERIODS: Record<CardId, PeriodId> = {
+  pir: "24h", avg: "24h", mini: "24h", quart: "24h", normal: "24h", strict: "24h",
+  gmi: "90d", unicorns: "24h", highsLows: "24h", median: "24h", stdDev: "24h",
+  cv: "24h", flux: "24h",
+};
 
-function countHighsLows(points: DataPoint[], maxMmol: number) {
-  let highs = 0;
-  let lows = 0;
-  for (const p of points) {
-    if (p.mmol > maxMmol) highs++;
-    else if (p.mmol < 4.0) lows++;
-  }
-  return { highs, lows };
-}
+// Cards whose values come from /insightstats (health-api computes them from
+// the period's readings); they share one fetch per period.
+const STATS_CARDS: CardId[] = [
+  "pir", "avg", "mini", "quart", "normal", "strict", "unicorns", "highsLows", "median", "stdDev", "cv", "flux",
+];
+
+const EMPTY_STATS: InsightStats = {
+  hours: 0, count: 0, in_range_pct: 0, mean: 0, median: 0, std_dev: 0, cv: 0, q1: 0, q3: 0,
+  highs: 0, lows: 0, unicorns: 0,
+  normal: { low: 0, in: 100, high: 0 },
+  strict: { low: 0, in: 100, high: 0 },
+  sparkline: [],
+};
+
+// /gmi/:days rejects 7 days or fewer.
+const GMI_TOO_SHORT = "GMI needs more than 7 days of readings.";
+const GMI_DISABLED: Partial<Record<PeriodId, string>> = { "24h": GMI_TOO_SHORT, "7d": GMI_TOO_SHORT };
 
 function getFluxGrade(cv: number): string {
   if (cv <= 20) return "A+";
@@ -63,37 +57,68 @@ function getFluxGrade(cv: number): string {
   return "D";
 }
 
+function RangeBar({ split }: { split: RangeSplit }) {
+  return (
+    <div className="range-bar">
+      <span className="range-bar__low" style={{ flex: split.low }}>
+        {split.low}%
+      </span>
+      <span className="range-bar__in" style={{ flex: split.in }}>
+        {split.in}%
+      </span>
+      <span className="range-bar__high" style={{ flex: split.high }}>
+        {split.high}%
+      </span>
+    </div>
+  );
+}
+
+const ready = <T,>(data: T): Fetched<T> => ({ data, loading: false, error: null });
+
 export default function InsightsGrid({
-  avgMmol24h,
-  quartiles,
+  stats24h,
   gmi,
-  percentInRange,
-  sparkline24h,
-  dataPoints24h,
+  refreshedAt,
 }: Props) {
-  const stats = computeStats(dataPoints24h);
-  const quarts = getQuartileSummary(quartiles);
-  const { highs, lows } = countHighsLows(dataPoints24h, 10.0);
-  const { highs: highs7, lows: lows7 } = countHighsLows(dataPoints24h, 7.0);
+  const [periods, setPeriods] = useState(DEFAULT_PERIODS);
+  const setPeriod = (card: CardId) => (period: PeriodId) =>
+    setPeriods((prev) => ({ ...prev, [card]: period }));
+  const p = (card: CardId) => periodById(periods[card]);
 
-  const pirStrict = percentInRange?.[0]?.data?.[0]?.y ?? 0;
+  // /insightstats for each period some stats-based card is showing.
+  const used = (id: PeriodId) => STATS_CARDS.some((c) => periods[c] === id);
+  const statsKey = (id: PeriodId) => (used(id) ? `insightstats/${periodById(id).hours}` : null);
+  const stats: Record<PeriodId, Fetched<InsightStats>> = {
+    "24h": stats24h ? ready(stats24h) : { data: null, loading: true, error: null },
+    "7d": useCachedFetch(statsKey("7d"), () => api.getInsightStats(168), refreshedAt),
+    "14d": useCachedFetch(statsKey("14d"), () => api.getInsightStats(336), refreshedAt),
+    "90d": useCachedFetch(statsKey("90d"), () => api.getInsightStats(2160), refreshedAt),
+  };
+  // Until a period's stats arrive the card shows "Loading…", so these
+  // zeros are never displayed.
+  const statsFor = (card: CardId): InsightStats => stats[periods[card]].data ?? EMPTY_STATS;
+  const statusFor = (card: CardId) => {
+    const r = stats[periods[card]];
+    return { loading: r.loading, error: r.data ? null : r.error };
+  };
 
-  // Count unicorns (readings of exactly 5.5 mmol/L). Compare at 2 decimal
-  // places to avoid floating-point noise from the mg/dL → mmol/L conversion.
-  const unicorns = dataPoints24h.filter(
-    (p) => Math.round(p.mmol * 100) === 550
-  ).length;
+  // Server-computed cards: App's data for the default period, otherwise a
+  // fetch for the chosen one.
+  const pirStrict = statsFor("pir").in_range_pct;
 
-  // Low/High/InRange breakdown (4–10 mmol)
-  const totalPts = dataPoints24h.length || 1;
-  const lowPct = Math.round((lows / totalPts) * 100);
-  const highPct = Math.round((highs / totalPts) * 100);
-  const inRangePct = 100 - lowPct - highPct;
+  const gmiFetch = useCachedFetch(
+    periods.gmi === "90d" ? null : `gmi/${p("gmi").days}`,
+    () => api.getGmi(p("gmi").days),
+    refreshedAt
+  );
+  const gmiData = periods.gmi === "90d" ? ready(gmi) : gmiFetch;
 
-  // Strict breakdown (4–7 mmol)
-  const lowPct7 = Math.round((lows7 / totalPts) * 100);
-  const highPct7 = Math.round((highs7 / totalPts) * 100);
-  const inRangePct7 = 100 - lowPct7 - highPct7;
+  const status = <T,>(f: Fetched<T>) => ({ loading: f.loading, error: f.data ? null : f.error });
+
+  const quart = statsFor("quart");
+
+  // Props every card shares: its period, and switching it.
+  const card = (id: CardId) => ({ period: periods[id], onPeriodChange: setPeriod(id) });
 
   return (
     <div className="insights">
@@ -101,8 +126,9 @@ export default function InsightsGrid({
       <div className="insights__grid">
         <InsightCard
           title="% In Range"
-          period="24 hours"
-          description="Share of readings in the last 24 hours within the strict target range, 4.0–7.0 mmol/L."
+          {...card("pir")}
+          {...statusFor("pir")}
+          description={`Share of readings in the ${p("pir").long} within the strict target range, 4.0–7.0 mmol/L.`}
         >
           <div className="insight-value insight-value--ring">
             <svg viewBox="0 0 36 36" className="ring-svg">
@@ -124,12 +150,13 @@ export default function InsightsGrid({
 
         <InsightCard
           title="Average Glucose"
-          period="24 hours"
-          description="Mean of all readings in the last 24 hours."
+          {...card("avg")}
+          {...statusFor("avg")}
+          description={`Mean of all readings in the ${p("avg").long}.`}
         >
           <div className="insight-value">
             <span className="insight-value__big">
-              {avgMmol24h?.bg_mmol?.toFixed(1) ?? "--"}
+              {statsFor("avg").count > 0 ? statsFor("avg").mean.toFixed(1) : "--"}
             </span>
             <span className="insight-value__unit">mmol/L</span>
           </div>
@@ -137,69 +164,56 @@ export default function InsightsGrid({
 
         <InsightCard
           title="Mini Graph"
-          period="24 hours"
-          description="Glucose trace over the last 24 hours."
+          {...card("mini")}
+          {...statusFor("mini")}
+          description={`Glucose trace over the ${p("mini").long}.`}
         >
-          <MiniSparkline data={sparkline24h} />
+          <MiniSparkline data={statsFor("mini").sparkline} />
         </InsightCard>
 
         <InsightCard
           title="Quartiles"
-          period="24 hours"
-          description="25th, 50th (median, centre) and 75th percentile of the last 24 hours of readings. Half of all readings fall between the outer two."
+          {...card("quart")}
+          {...statusFor("quart")}
+          description={`25th, 50th (median, centre) and 75th percentile of the ${p("quart").long} of readings. Half of all readings fall between the outer two.`}
         >
           <QuartileCurve
-            q1={quarts.q1}
-            median={quarts.q2}
-            q3={quarts.q3}
-            empty={quartiles.length === 0}
+            q1={quart.q1}
+            median={quart.median}
+            q3={quart.q3}
+            empty={quart.count === 0}
           />
         </InsightCard>
 
         <InsightCard
           title="Normal Range %"
-          period="24 hours"
-          description="Share of readings in the last 24 hours below 4.0 (red), 4.0–10.0 (green) and above 10.0 mmol/L (amber)."
+          {...card("normal")}
+          {...statusFor("normal")}
+          description={`Share of readings in the ${p("normal").long} below 4.0 (red), 4.0–10.0 (green) and above 10.0 mmol/L (amber).`}
         >
-          <div className="range-bar">
-            <span className="range-bar__low" style={{ flex: lowPct }}>
-              {lowPct}%
-            </span>
-            <span className="range-bar__in" style={{ flex: inRangePct }}>
-              {inRangePct}%
-            </span>
-            <span className="range-bar__high" style={{ flex: highPct }}>
-              {highPct}%
-            </span>
-          </div>
+          <RangeBar split={statsFor("normal").normal} />
         </InsightCard>
 
         <InsightCard
           title="Strict Range %"
-          period="24 hours (4–7)"
-          description="Share of readings in the last 24 hours below 4.0 (red), 4.0–7.0 (green) and above 7.0 mmol/L (amber)."
+          {...card("strict")}
+          {...statusFor("strict")}
+          periodSuffix=" (4–7)"
+          description={`Share of readings in the ${p("strict").long} below 4.0 (red), 4.0–7.0 (green) and above 7.0 mmol/L (amber).`}
         >
-          <div className="range-bar">
-            <span className="range-bar__low" style={{ flex: lowPct7 }}>
-              {lowPct7}%
-            </span>
-            <span className="range-bar__in" style={{ flex: inRangePct7 }}>
-              {inRangePct7}%
-            </span>
-            <span className="range-bar__high" style={{ flex: highPct7 }}>
-              {highPct7}%
-            </span>
-          </div>
+          <RangeBar split={statsFor("strict").strict} />
         </InsightCard>
 
         <InsightCard
           title="GMI"
-          period="90 days"
-          description="Glucose Management Indicator: an estimate of HbA1c from the 90-day average glucose (3.31 + 0.02392 × mean mg/dL)."
+          {...card("gmi")}
+          {...status(gmiData)}
+          disabledPeriods={GMI_DISABLED}
+          description={`Glucose Management Indicator: an estimate of HbA1c from the ${p("gmi").days}-day average glucose (3.31 + 0.02392 × mean mg/dL).`}
         >
           <div className="insight-value">
             <span className="insight-value__big">
-              {gmi?.gmi_percent?.toFixed(1) ?? "--"}
+              {gmiData.data?.gmi_percent?.toFixed(1) ?? "--"}
             </span>
             <span className="insight-value__unit">%</span>
           </div>
@@ -207,35 +221,38 @@ export default function InsightsGrid({
 
         <InsightCard
           title="Unicorns"
-          period="24 hours"
-          description="Readings of exactly 5.5 mmol/L in the last 24 hours."
+          {...card("unicorns")}
+          {...statusFor("unicorns")}
+          description={`Readings of exactly 5.5 mmol/L in the ${p("unicorns").long}.`}
         >
           <div className="insight-value">
-            <span className="insight-value__big">{unicorns}</span>
+            <span className="insight-value__big">{statsFor("unicorns").unicorns}</span>
             <span className="insight-value__unit">found</span>
           </div>
         </InsightCard>
 
         <InsightCard
           title="Highs / Lows"
-          period="24 hours"
-          description="Number of readings in the last 24 hours above 10.0 mmol/L (highs) and below 4.0 mmol/L (lows)."
+          {...card("highsLows")}
+          {...statusFor("highsLows")}
+          description={`Number of readings in the ${p("highsLows").long} above 10.0 mmol/L (highs) and below 4.0 mmol/L (lows).`}
         >
           <div className="insight-value">
             <span className="insight-value__big">
-              {highs} / {lows}
+              {statsFor("highsLows").highs} / {statsFor("highsLows").lows}
             </span>
           </div>
         </InsightCard>
 
         <InsightCard
           title="Median"
-          period="24 hours"
-          description="Middle value of the last 24 hours of readings: half are above it, half below."
+          {...card("median")}
+          {...statusFor("median")}
+          description={`Middle value of the ${p("median").long} of readings: half are above it, half below.`}
         >
           <div className="insight-value">
             <span className="insight-value__big">
-              {stats.median.toFixed(1)}
+              {statsFor("median").median.toFixed(1)}
             </span>
             <span className="insight-value__unit">mmol/L</span>
           </div>
@@ -243,12 +260,13 @@ export default function InsightsGrid({
 
         <InsightCard
           title="Std. Dev."
-          period="24 hours"
-          description="Standard deviation of the last 24 hours of readings: how far readings typically are from the average."
+          {...card("stdDev")}
+          {...statusFor("stdDev")}
+          description={`Standard deviation of the ${p("stdDev").long} of readings: how far readings typically are from the average.`}
         >
           <div className="insight-value">
             <span className="insight-value__big">
-              &plusmn;{stats.stdDev.toFixed(1)}
+              &plusmn;{statsFor("stdDev").std_dev.toFixed(1)}
             </span>
             <span className="insight-value__unit">mmol/L</span>
           </div>
@@ -256,12 +274,13 @@ export default function InsightsGrid({
 
         <InsightCard
           title="CV"
-          period="24 hours"
+          {...card("cv")}
+          {...statusFor("cv")}
           description="Coefficient of variation: standard deviation as a percentage of the mean. 36% or less is generally considered stable."
         >
           <div className="insight-value">
             <span className="insight-value__big">
-              {stats.cv.toFixed(0)}
+              {statsFor("cv").cv.toFixed(0)}
             </span>
             <span className="insight-value__unit">% of mean</span>
           </div>
@@ -269,12 +288,13 @@ export default function InsightsGrid({
 
         <InsightCard
           title="Flux"
-          period="24 hours"
+          {...card("flux")}
+          {...statusFor("flux")}
           description="Grade for glucose variability, from CV: A+ (≤20%), A (≤25%), B+ (≤30%), B (≤33%), C (≤36%), D (above 36%)."
         >
           <div className="insight-value">
             <span className="insight-value__big">
-              {getFluxGrade(stats.cv)}
+              {getFluxGrade(statsFor("flux").cv)}
             </span>
           </div>
         </InsightCard>

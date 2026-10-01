@@ -2,46 +2,46 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import InsightsGrid from "./InsightsGrid";
-import type { DataPoint } from "../api/types";
+import type { InsightStats } from "../api/types";
 
 let container: HTMLDivElement;
 let root: Root;
 
-function point(mmol: number, i: number): DataPoint {
-  const epoch = Date.parse("2026-09-28T12:00:00.000Z") + i * 300_000;
-  return {
-    epoch,
-    mmol,
-    datetime: new Date(epoch).toISOString(),
-    date: "2026-09-28",
-    time: "12:00",
-    in_range: mmol >= 4.0 && mmol <= 7.0,
-    point_color: "",
-  };
-}
+const STATS: InsightStats = {
+  hours: 24,
+  count: 288,
+  in_range_pct: 59,
+  mean: 6.53,
+  median: 6.84,
+  std_dev: 1.62,
+  cv: 24.6,
+  q1: 5.5,
+  q3: 7.8,
+  highs: 4,
+  lows: 2,
+  unicorns: 3,
+  normal: { low: 1, in: 95, high: 4 },
+  strict: { low: 1, in: 59, high: 40 },
+  sparkline: [],
+};
 
-function render(mmols: number[]) {
+function render(stats: InsightStats | null = STATS) {
   act(() =>
     root.render(
       <InsightsGrid
-        avgMmol24h={null}
-        quartiles={[]}
+        stats24h={stats}
         gmi={null}
-        percentInRange={[]}
-        sparkline24h={[]}
-        dataPoints24h={mmols.map(point)}
+        refreshedAt={0}
       />
     )
   );
 }
 
-// The big number on the "Unicorns" card.
-function unicornCount(): string | null | undefined {
-  const card = [...container.querySelectorAll(".insight-card")].find(
-    (c) => c.querySelector(".insight-card__title")?.textContent === "Unicorns"
-  );
-  return card?.querySelector(".insight-value__big")?.textContent;
-}
+const card = (title: string) =>
+  [...container.querySelectorAll<HTMLElement>(".insight-card")].find(
+    (c) => c.querySelector(".insight-card__title")?.textContent === title
+  )!;
+const big = (title: string) => card(title).querySelector(".insight-value__big")?.textContent;
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -55,32 +55,36 @@ afterEach(() => {
   container.remove();
 });
 
-describe("InsightsGrid unicorns", () => {
-  it("counts only readings of exactly 5.5 mmol/L", () => {
-    render([5.5, 4.0, 5.4, 5.5, 5.6, 7.0, 5.51, 5.5, 12.3]);
-    expect(unicornCount()).toBe("3");
+describe("InsightsGrid values from /insightstats", () => {
+  it("shows each stat on its card", () => {
+    render();
+    expect(card("% In Range").querySelector(".ring-text")?.textContent).toBe("59");
+    expect(big("Average Glucose")).toBe("6.5");
+    expect(big("Unicorns")).toBe("3");
+    expect(big("Highs / Lows")).toBe("4 / 2");
+    expect(big("Median")).toBe("6.8");
+    expect(big("Std. Dev.")).toBe("±1.6");
+    expect(big("CV")).toBe("25");
+    expect(big("Flux")).toBe("A"); // CV 24.6 ≤ 25
+    const bar = (title: string) =>
+      [...card(title).querySelectorAll(".range-bar span")].map((s) => s.textContent);
+    expect(bar("Normal Range %")).toEqual(["1%", "95%", "4%"]);
+    expect(bar("Strict Range %")).toEqual(["1%", "59%", "40%"]);
+    const labels = [...card("Quartiles").querySelectorAll(".quartile-curve__label")].map((t) => t.textContent);
+    expect(labels).toEqual(["5.5", "6.8", "7.8"]);
   });
 
-  it("is zero when in-range readings never hit 5.5", () => {
-    render([4.0, 4.5, 5.0, 6.0, 6.5, 7.0]);
-    expect(unicornCount()).toBe("0");
-  });
-
-  it("is zero with no readings", () => {
-    render([]);
-    expect(unicornCount()).toBe("0");
-  });
-
-  it("counts 5.5 derived from mg/dL despite floating-point noise", () => {
-    // 99 mg/dL / 18 = 5.5; simulate an unrounded conversion off by an ulp.
-    render([99 / 18, 5.5 + Number.EPSILON * 4, 5.499999999]);
-    expect(unicornCount()).toBe("3");
+  it("shows Loading… on stats-based cards until the first 24h stats arrive", () => {
+    render(null);
+    for (const title of ["% In Range", "Average Glucose", "Unicorns", "Median", "Quartiles", "Mini Graph", "Normal Range %"]) {
+      expect(card(title).querySelector(".insight-card__status")?.textContent, title).toBe("Loading…");
+    }
   });
 });
 
 describe("InsightsGrid card descriptions", () => {
   it("links every card title to a non-empty tooltip", () => {
-    render([5.5, 6.0]);
+    render();
     const titles = [...container.querySelectorAll<HTMLElement>(".insight-card__title")];
     expect(titles).toHaveLength(13);
     for (const title of titles) {
