@@ -103,6 +103,14 @@ subordinate UIDs, so removing them from the host needs
 uses `docker compose` if `docker` is on `PATH`, otherwise `podman compose`;
 set `COMPOSE="podman compose"` to force it.
 
+To check which commit a running UI was built from, view the page source and
+look for `<meta name="app-version" content="...">`. Docker builds can't see
+`.git`, so pass the commit in when building, otherwise it reads `unknown`:
+
+```bash
+GIT_SHA=$(git rev-parse --short HEAD) docker compose up -d --build health-fe
+```
+
 ### Running behind Caddy
 
 If Caddy runs as a container in its own compose stack, add

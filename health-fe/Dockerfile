@@ -5,6 +5,9 @@ RUN npm ci
 COPY . .
 ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}
+# Commit the image was built from, exposed as <meta name="app-version">.
+ARG GIT_SHA=unknown
+ENV VITE_GIT_SHA=${GIT_SHA}
 RUN npm run build
 
 FROM docker.io/library/nginx:alpine
