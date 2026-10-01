@@ -110,7 +110,7 @@ export default function InsightsGrid({
                 strokeDasharray={`${pirStrict}, 100`}
                 d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0 -31.831"
               />
-              <text x="18" y="20" className="ring-text">
+              <text x="18" y="18" className="ring-text">
                 {Math.round(pirStrict)}
               </text>
             </svg>
