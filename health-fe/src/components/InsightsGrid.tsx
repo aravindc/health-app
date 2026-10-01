@@ -98,7 +98,11 @@ export default function InsightsGrid({
     <div className="insights">
       <h2 className="insights__title">Insights</h2>
       <div className="insights__grid">
-        <InsightCard title="% In Range" period="24 hours">
+        <InsightCard
+          title="% In Range"
+          period="24 hours"
+          description="Share of readings in the last 24 hours within the strict target range, 4.0–7.0 mmol/L."
+        >
           <div className="insight-value insight-value--ring">
             <svg viewBox="0 0 36 36" className="ring-svg">
               <path
@@ -117,7 +121,11 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="Average Glucose" period="24 hours">
+        <InsightCard
+          title="Average Glucose"
+          period="24 hours"
+          description="Mean of all readings in the last 24 hours."
+        >
           <div className="insight-value">
             <span className="insight-value__big">
               {avgMmol24h?.bg_mmol?.toFixed(1) ?? "--"}
@@ -126,11 +134,19 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="Mini Graph" period="24 hours">
+        <InsightCard
+          title="Mini Graph"
+          period="24 hours"
+          description="Glucose trace over the last 24 hours."
+        >
           <MiniSparkline data={sparkline24h} />
         </InsightCard>
 
-        <InsightCard title="Quartiles" period="24 hours">
+        <InsightCard
+          title="Quartiles"
+          period="24 hours"
+          description="25th, 50th (median, centre) and 75th percentile of the last 24 hours of readings. Half of all readings fall between the outer two."
+        >
           <div className="quartile-display">
             <span className="quartile-val">{quarts.q1.toFixed(1)}</span>
             <span className="quartile-val quartile-val--mid">
@@ -140,7 +156,11 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="Normal Range %" period="24 hours">
+        <InsightCard
+          title="Normal Range %"
+          period="24 hours"
+          description="Share of readings in the last 24 hours below 4.0 (red), 4.0–10.0 (green) and above 10.0 mmol/L (amber)."
+        >
           <div className="range-bar">
             <span className="range-bar__low" style={{ flex: lowPct }}>
               {lowPct}%
@@ -154,7 +174,11 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="Strict Range %" period="24 hours (4–7)">
+        <InsightCard
+          title="Strict Range %"
+          period="24 hours (4–7)"
+          description="Share of readings in the last 24 hours below 4.0 (red), 4.0–7.0 (green) and above 7.0 mmol/L (amber)."
+        >
           <div className="range-bar">
             <span className="range-bar__low" style={{ flex: lowPct7 }}>
               {lowPct7}%
@@ -168,7 +192,11 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="GMI" period="90 days">
+        <InsightCard
+          title="GMI"
+          period="90 days"
+          description="Glucose Management Indicator: an estimate of HbA1c from the 90-day average glucose (3.31 + 0.02392 × mean mg/dL)."
+        >
           <div className="insight-value">
             <span className="insight-value__big">
               {gmi?.gmi_percent?.toFixed(1) ?? "--"}
@@ -177,14 +205,22 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="Unicorns" period="24 hours">
+        <InsightCard
+          title="Unicorns"
+          period="24 hours"
+          description="Readings of exactly 5.5 mmol/L in the last 24 hours."
+        >
           <div className="insight-value">
             <span className="insight-value__big">{unicorns}</span>
             <span className="insight-value__unit">found</span>
           </div>
         </InsightCard>
 
-        <InsightCard title="Highs / Lows" period="24 hours">
+        <InsightCard
+          title="Highs / Lows"
+          period="24 hours"
+          description="Number of readings in the last 24 hours above 10.0 mmol/L (highs) and below 4.0 mmol/L (lows)."
+        >
           <div className="insight-value">
             <span className="insight-value__big">
               {highs} / {lows}
@@ -192,7 +228,11 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="Median" period="24 hours">
+        <InsightCard
+          title="Median"
+          period="24 hours"
+          description="Middle value of the last 24 hours of readings: half are above it, half below."
+        >
           <div className="insight-value">
             <span className="insight-value__big">
               {stats.median.toFixed(1)}
@@ -201,7 +241,11 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="Std. Dev." period="24 hours">
+        <InsightCard
+          title="Std. Dev."
+          period="24 hours"
+          description="Standard deviation of the last 24 hours of readings: how far readings typically are from the average."
+        >
           <div className="insight-value">
             <span className="insight-value__big">
               &plusmn;{stats.stdDev.toFixed(1)}
@@ -210,7 +254,11 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="CV" period="24 hours">
+        <InsightCard
+          title="CV"
+          period="24 hours"
+          description="Coefficient of variation: standard deviation as a percentage of the mean. 36% or less is generally considered stable."
+        >
           <div className="insight-value">
             <span className="insight-value__big">
               {stats.cv.toFixed(0)}
@@ -219,7 +267,11 @@ export default function InsightsGrid({
           </div>
         </InsightCard>
 
-        <InsightCard title="Flux" period="24 hours">
+        <InsightCard
+          title="Flux"
+          period="24 hours"
+          description="Grade for glucose variability, from CV: A+ (≤20%), A (≤25%), B+ (≤30%), B (≤33%), C (≤36%), D (above 36%)."
+        >
           <div className="insight-value">
             <span className="insight-value__big">
               {getFluxGrade(stats.cv)}

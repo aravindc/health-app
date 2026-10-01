@@ -77,3 +77,19 @@ describe("InsightsGrid unicorns", () => {
     expect(unicornCount()).toBe("3");
   });
 });
+
+describe("InsightsGrid card descriptions", () => {
+  it("links every card title to a non-empty tooltip", () => {
+    render([5.5, 6.0]);
+    const titles = [...container.querySelectorAll<HTMLElement>(".insight-card__title")];
+    expect(titles).toHaveLength(13);
+    for (const title of titles) {
+      const id = title.getAttribute("aria-describedby");
+      const tooltip = id ? document.getElementById(id) : null;
+      expect(tooltip?.getAttribute("role"), title.textContent!).toBe("tooltip");
+      expect(tooltip?.textContent?.trim(), title.textContent!).not.toBe("");
+      // Focusable, so keyboard and touch users can open it too.
+      expect(title.tabIndex, title.textContent!).toBe(0);
+    }
+  });
+});
