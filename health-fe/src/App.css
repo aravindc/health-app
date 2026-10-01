@@ -17,6 +17,13 @@
   border-bottom: 1px solid #333;
 }
 
+.dashboard__labels {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125rem;
+}
+
 .dashboard__label {
   font-size: 0.75rem;
   color: #666;

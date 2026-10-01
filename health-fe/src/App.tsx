@@ -93,7 +93,10 @@ function App() {
     <div className="dashboard">
       <header className="dashboard__header">
         <CurrentReading reading={lastReading} />
-        <span className="dashboard__label">CGM Data by Dexcom</span>
+        <div className="dashboard__labels">
+          <span className="dashboard__label">CGM Data by Dexcom</span>
+          <span className="dashboard__label">Insulin Data by Tandem</span>
+        </div>
       </header>
 
       {error && <div className="dashboard__error">{error}</div>}
