@@ -86,10 +86,13 @@ export default function Heatmap({ title, data, colorFn, labelFn }: Props) {
   const cellSize = 14;
   const cellGap = 3;
   const step = cellSize + cellGap;
-  const labelWidth = 60;
+  // Just wide enough for the day labels ("Sun" etc. at 10px, right-aligned
+  // 8px before the cells).
+  const labelWidth = 30;
   const headerHeight = 24;
 
-  const svgWidth = labelWidth + weeks.length * step + 10;
+  // Right padding fits a month label starting at the last column.
+  const svgWidth = labelWidth + weeks.length * step + 14;
   const svgHeight = headerHeight + 7 * step + 5;
 
   return (
@@ -149,7 +152,7 @@ export default function Heatmap({ title, data, colorFn, labelFn }: Props) {
                     fill={colorFn(!strict && day.valueMedical !== undefined ? day.valueMedical : day.value, strict)}
                   />
                   <title>
-                    {day.date}: {labelFn(!strict && day.valueMedical !== undefined ? day.valueMedical : day.value)}
+                    {`${day.date}: ${labelFn(!strict && day.valueMedical !== undefined ? day.valueMedical : day.value)}`}
                   </title>
                 </g>
               );

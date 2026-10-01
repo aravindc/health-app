@@ -19,7 +19,7 @@ import { avgColor, tirColor } from "./heatmapColors";
 import "./App.css";
 
 const REFRESH_INTERVAL = 60_000;
-const HEATMAP_DAYS = 120;
+const HEATMAP_DAYS = 90;
 
 function App() {
   const [lastReading, setLastReading] = useState<LastReading | null>(null);

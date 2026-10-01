@@ -417,7 +417,10 @@
   display: inline-block;
 }
 
-.insights__grid {
+/* The heatmaps share the Insights grid's columns so each heatmap card
+   (spanning two) lines up with two insight cards above it. */
+.insights__grid,
+.heatmaps {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 0.75rem;
@@ -457,9 +460,12 @@
 }
 
 /* ===== Insight Values ===== */
+/* Centred in the card body, like the % In Range ring. */
 .insight-value {
   display: flex;
   align-items: baseline;
+  justify-content: center;
+  width: 100%;
   gap: 0.3rem;
 }
 
@@ -475,11 +481,6 @@
 }
 
 /* ===== Ring / Donut Chart ===== */
-.insight-value--ring {
-  justify-content: center;
-  width: 100%;
-}
-
 .ring-svg {
   width: 60px;
   height: 60px;
@@ -571,13 +572,14 @@
 
 /* ===== Heatmaps ===== */
 .heatmaps {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
   margin-top: 1.5rem;
 }
 
+/* Two insight cards wide (see .insights__grid). If that's narrower than
+   the heatmap, it scrolls inside the card (.heatmap-card__scroll). */
 .heatmap-card {
+  grid-column: span 2;
+  min-width: 0;
   background: #252525;
   border-radius: 12px;
   padding: 1rem;
@@ -612,8 +614,11 @@
   overflow-x: auto;
 }
 
+/* Centred in the card; auto margins drop to 0 when it overflows, so
+   scrolling still starts at the first week. */
 .heatmap-svg {
   display: block;
+  margin: 0 auto;
 }
 
 .heatmap-month {
@@ -645,15 +650,12 @@
     font-size: 1.1rem;
   }
 
-  .insights__grid {
+  .insights__grid,
+  .heatmaps {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
 
   .insight-value__big {
     font-size: 1.4rem;
-  }
-
-  .heatmaps {
-    grid-template-columns: 1fr;
   }
 }
