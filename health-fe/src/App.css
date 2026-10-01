@@ -550,29 +550,53 @@
   dominant-baseline: central;
 }
 
-/* ===== Quartile Display ===== */
-.quartile-display {
-  display: flex;
-  gap: 0.25rem;
-  align-items: center;
+/* ===== Quartile Curve ===== */
+.quartile-curve {
+  display: block;
   width: 100%;
+  height: auto;
+  overflow: visible;
 }
 
-.quartile-val {
-  background: #333;
-  padding: 0.3rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
+.quartile-curve__base {
+  stroke: #444;
+  stroke-width: 0.75;
+}
+
+.quartile-curve__line {
+  fill: none;
+  stroke: #ccc;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+/* The middle 50% of readings, between Q1 and Q3. */
+.quartile-curve__iqr {
+  fill: rgba(37, 99, 235, 0.35);
+}
+
+.quartile-curve__marker {
+  stroke: #888;
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.quartile-curve__marker--mid {
+  stroke: #e0e0e0;
+  stroke-dasharray: none;
+}
+
+.quartile-curve__label {
+  fill: #aaa;
+  font-size: 8.5px;
   font-weight: 600;
-  text-align: center;
-  flex: 1;
+  text-anchor: middle;
 }
 
-.quartile-val--mid {
-  background: #444;
-  font-size: 1.1rem;
+.quartile-curve__label--mid {
+  fill: #e0e0e0;
+  font-size: 10px;
   font-weight: 700;
-  padding: 0.4rem 0.5rem;
 }
 
 /* ===== Range Bar ===== */
