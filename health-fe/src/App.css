@@ -428,6 +428,8 @@
 
 /* ===== Insight Card ===== */
 .insight-card {
+  /* Anchors the title's tooltip (.insight-card__tooltip). */
+  position: relative;
   background: #252525;
   border-radius: 10px;
   padding: 0.85rem;
@@ -446,6 +448,47 @@
   font-size: 0.8rem;
   font-weight: 600;
   color: #ccc;
+  width: fit-content;
+  cursor: help;
+  /* Hints that the title has a description to show. */
+  text-decoration: underline dotted #666;
+  text-underline-offset: 3px;
+}
+
+.insight-card__title:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Spans the card (not the title) so it never runs off-screen on the
+   outermost cards; shown while the title is hovered or focused, which
+   includes tapping it on touch screens. */
+.insight-card__tooltip {
+  position: absolute;
+  top: 2.6rem;
+  left: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+  padding: 0.5rem 0.6rem;
+  background: #111;
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  color: #ddd;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.4;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s, visibility 0.12s;
+  pointer-events: none;
+}
+
+.insight-card__title:hover + .insight-card__tooltip,
+.insight-card__title:focus + .insight-card__tooltip {
+  visibility: visible;
+  opacity: 1;
 }
 
 .insight-card__period {
