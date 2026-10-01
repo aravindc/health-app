@@ -77,9 +77,10 @@ export default function InsightsGrid({
 
   const pirStrict = percentInRange?.[0]?.data?.[0]?.y ?? 0;
 
-  // Count unicorns (perfect 5-minute readings in range 4.0–7.0)
+  // Count unicorns (readings of exactly 5.5 mmol/L). Compare at 2 decimal
+  // places to avoid floating-point noise from the mg/dL → mmol/L conversion.
   const unicorns = dataPoints24h.filter(
-    (p) => p.mmol >= 4.0 && p.mmol <= 7.0
+    (p) => Math.round(p.mmol * 100) === 550
   ).length;
 
   // Low/High/InRange breakdown (4–10 mmol)
