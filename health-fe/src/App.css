@@ -39,48 +39,142 @@
 }
 
 /* ===== Current Reading ===== */
-.current-reading__main {
+/* A filled circle in the chart's CGM status colour (--reading-color, set
+   inline from chart/cgmColors.ts), with a pointer on its edge rotated to
+   the trend. */
+.current-reading {
+  --bezel-color: #f2f2f2;
+  --reading-text: #fff;
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 2rem;
+}
+
+/* White text is hard to read on the light amber. */
+.current-reading--elevated {
+  --reading-text: #111;
+}
+
+.current-reading--none {
+  --bezel-color: #555;
+  --reading-color: #333;
+  --reading-text: #888;
+}
+
+.current-reading__dial {
+  position: relative;
+  width: 7rem;
+  height: 7rem;
+  flex: none;
+  /* The pointer swings from straight up to straight down on the right, and
+     a double arrow sticks out ~2.25rem: leave that much room above and
+     below (the flex gap covers the right). */
+  margin: 2.25rem 0;
+}
+
+/* Coloured disc inside a light bezel with a drop shadow, like a raised
+   puck. */
+.current-reading__circle {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 0.45rem solid var(--bezel-color);
+  background: var(--reading-color);
+  color: var(--reading-text);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* With a pointer, the teardrop underneath casts the shadow instead, so it
+   falls around the tip too. */
+.current-reading__pointer ~ .current-reading__circle {
+  box-shadow: none;
 }
 
 .current-reading__value {
-  font-size: 3.5rem;
-  font-weight: 700;
+  font-size: 2.3rem;
+  font-weight: 500;
   line-height: 1;
 }
 
-.current-reading__arrow {
-  font-size: 2rem;
+.current-reading__value--word {
+  font-size: 1.4rem;
 }
 
+/* Same box as the circle, so rotating it swings the tip around the
+   circle's centre. Drawn under the circle, which covers the teardrop's
+   round part and leaves the tip showing. */
+.current-reading__pointer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.6));
+}
+
+.current-reading__bezel {
+  fill: var(--bezel-color);
+}
+
+/* Dark in the reference, but that would vanish on our dark background, so
+   the tip takes the reading colour. */
+.current-reading__chevron {
+  fill: var(--reading-color);
+}
+
+.current-reading__info {
+  display: flex;
+  flex-direction: column;
+  /* Keeps the pill as wide as its text rather than the column. */
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+/* Neutral pill: no colour by direction, since whether a rise or fall is
+   good depends on the current level. */
 .current-reading__diff {
-  font-size: 1rem;
-  color: #aaa;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #ddd;
+  background: #2e2e2e;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
 }
 
-.current-reading__diff small {
-  font-size: 0.75rem;
-  color: #777;
+/* Read by screen readers in place of the ▲/▼/± mark, but not shown. */
+.current-reading__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .current-reading__meta {
   font-size: 0.8rem;
   color: #666;
-  margin-top: 0.25rem;
 }
 
-.current-reading--normal .current-reading__value {
-  color: #e0e0e0;
+/* No reading for STALE_MINUTES (CurrentReading.tsx): grey out the dial and
+   flag the time in the chart's amber (COLOR_CGM_ELEVATED). The dial gets
+   one fixed grey rather than a grayscale filter, which would keep each
+   band's lightness and text colour and so still hint at the old range.
+   Set on the dial so it overrides the inline --reading-color. */
+.current-reading--stale .current-reading__dial {
+  --bezel-color: #8a8a8a;
+  --reading-color: #4a4a4a;
+  --reading-text: #b5b5b5;
 }
 
-.current-reading--low .current-reading__value {
-  color: #e74c3c;
-}
-
-.current-reading--high .current-reading__value {
-  color: #e67e22;
+.current-reading--stale .current-reading__meta {
+  color: #fab219;
+  font-weight: 600;
 }
 
 /* ===== BG Chart ===== */
@@ -538,8 +632,17 @@
     padding: 1rem;
   }
 
+  .current-reading__dial {
+    width: 5.5rem;
+    height: 5.5rem;
+  }
+
   .current-reading__value {
-    font-size: 2.5rem;
+    font-size: 1.8rem;
+  }
+
+  .current-reading__value--word {
+    font-size: 1.1rem;
   }
 
   .insights__grid {

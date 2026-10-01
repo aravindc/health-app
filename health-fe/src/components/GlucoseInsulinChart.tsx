@@ -9,8 +9,11 @@ import {
   nearest,
   parseTime,
   cgmRange,
-  type CgmRange,
+  DEFAULT_MIN_MMOL,
+  DEFAULT_STRICT_MAX_MMOL,
+  DEFAULT_MAX_MMOL,
 } from "../chart/scale";
+import { colorForCgmRange } from "../chart/cgmColors";
 
 interface Props {
   minMmol?: number;
@@ -41,22 +44,6 @@ const COLOR_BASAL = "#999999"; // muted gray
 const COLOR_LOW = "#d55e00"; // vermillion (out-of-range shading, low)
 const COLOR_HIGH = "#e69f00"; // orange (out-of-range shading, high) — same as COLOR_FOOD, doesn't co-occur
 
-// CGM reading bars, colored per-reading by range (see chart/scale.ts's
-// cgmRange): green for the tight target band, amber for elevated-but-
-// not-critical, red for below the low threshold or above the medical
-// ceiling. This is a *status* palette (good/warning/critical), not a
-// categorical one — reusing COLOR_LOW/COLOR_HIGH (adjacent Okabe-Ito
-// hues, normal-vision ΔE ~15) was tried first and rejected: amber and
-// red need to be unmistakable per-bar at a glance across a dense 24h
-// window, and those two sit too close together (validated via
-// dataviz skill's validate_palette.js — see PR description). These
-// three are a fixed, pre-validated status set (ΔE ~27+ between
-// adjacent pairs on the dark surface this chart renders on), no
-// unused warning/serious/critical categories here.
-const COLOR_CGM_IN_RANGE = "#0ca30c"; // green (status: good)
-const COLOR_CGM_ELEVATED = "#fab219"; // amber (status: warning)
-const COLOR_CGM_CRITICAL = "#d03b3b"; // red (status: critical)
-
 const PANEL_HEIGHT_CGM = 220;
 const PANEL_HEIGHT_BASAL = 130;
 const PANEL_HEIGHT_ACTIVITY = 170;
@@ -65,18 +52,6 @@ const MIN_PANEL_WIDTH = 280; // guards against a 0/negative-width first measurem
 const WINDOW_MS = WINDOW_HOURS * 3_600_000;
 const DATA_REFETCH_DEBOUNCE_MS = 250; // wait for a drag to settle before refetching
 const DOSE_HOVER_RADIUS_PX = 8; // hit-test slack around a dose dot/line for the combined tooltip
-
-/** Maps a CGM reading's range band to its bar color. */
-function colorForCgmRange(range: CgmRange): string {
-  switch (range) {
-    case "in-range":
-      return COLOR_CGM_IN_RANGE;
-    case "elevated":
-      return COLOR_CGM_ELEVATED;
-    case "critical":
-      return COLOR_CGM_CRITICAL;
-  }
-}
 
 function formatHour(epoch: number): string {
   return new Date(epoch).toLocaleTimeString([], {
@@ -254,9 +229,9 @@ function ChartPanel({
 }
 
 export default function GlucoseInsulinChart({
-  minMmol = 4.0,
-  strictMaxMmol = 7.0,
-  maxMmol = 10.0,
+  minMmol = DEFAULT_MIN_MMOL,
+  strictMaxMmol = DEFAULT_STRICT_MAX_MMOL,
+  maxMmol = DEFAULT_MAX_MMOL,
   refreshedAt,
 }: Props) {
   // windowStart is a continuous epoch-ms timestamp (not a whole-day

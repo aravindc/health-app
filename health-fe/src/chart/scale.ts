@@ -68,6 +68,12 @@ export function parseTime(s: string): number {
  * the backend's raw HSL point_color string so the chart can map each
  * band to its own (Okabe-Ito colorblind-safe) palette.
  */
+/** Default cgmRange thresholds (mmol/L), shared by the chart and the
+ * header's current-reading dial. */
+export const DEFAULT_MIN_MMOL = 4.0;
+export const DEFAULT_STRICT_MAX_MMOL = 7.0;
+export const DEFAULT_MAX_MMOL = 10.0;
+
 export type CgmRange = "in-range" | "elevated" | "critical";
 
 /**
