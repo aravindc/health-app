@@ -430,6 +430,8 @@
 .insight-card {
   /* Anchors the title's tooltip (.insight-card__tooltip). */
   position: relative;
+  /* Clicking the card opens its period dialog. */
+  cursor: pointer;
   background: #252525;
   border-radius: 10px;
   padding: 0.85rem;
@@ -491,9 +493,114 @@
   opacity: 1;
 }
 
+/* Opens the period dialog (as does clicking anywhere on the card). Looks
+   like the plain label it replaced, plus a ▾ to show it's a menu. */
 .insight-card__period {
+  font: inherit;
   font-size: 0.65rem;
   color: #666;
+  background: none;
+  border: none;
+  padding: 0;
+  width: fit-content;
+  text-align: left;
+  cursor: pointer;
+}
+
+.insight-card__period::after {
+  content: " ▾";
+}
+
+.insight-card__period:hover {
+  color: #aaa;
+}
+
+.insight-card__period:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.insight-card__status {
+  width: 100%;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #777;
+}
+
+/* ===== Period Dialog ===== */
+.period-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: default;
+}
+
+.period-dialog {
+  background: #252525;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  padding: 1rem 1.1rem;
+  min-width: 15rem;
+  max-width: 100%;
+}
+
+.period-dialog__title {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.period-dialog__options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+}
+
+/* Styled like the heatmaps' Strict/Medical toggle. */
+.period-dialog__option {
+  background: #333;
+  border: 1px solid #555;
+  color: #ccc;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 0.6rem;
+  border-radius: 20px;
+  cursor: pointer;
+}
+
+.period-dialog__option:hover:not(:disabled) {
+  border-color: #888;
+  color: #fff;
+}
+
+.period-dialog__option[aria-pressed="true"] {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.period-dialog__option:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.period-dialog__option:focus-visible {
+  outline: 2px solid #9db8f5;
+  outline-offset: 2px;
+}
+
+.period-dialog__note {
+  margin: 0.75rem 0 0;
+  font-size: 0.72rem;
+  color: #888;
 }
 
 .insight-card__body {

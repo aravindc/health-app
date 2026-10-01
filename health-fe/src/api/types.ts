@@ -20,6 +20,32 @@ export interface DataPoint {
   point_color: string;
 }
 
+// GET /insightstats/:hours: the Insights cards' reading-based values,
+// computed by health-api (handlers/insights.go).
+export interface RangeSplit {
+  low: number; // % below the min
+  in: number; // % within the range
+  high: number; // % above the range
+}
+
+export interface InsightStats {
+  hours: number;
+  count: number;
+  in_range_pct: number; // % within min–strict max, rounded on its own
+  mean: number;
+  median: number;
+  std_dev: number;
+  cv: number;
+  q1: number;
+  q3: number;
+  highs: number;
+  lows: number;
+  unicorns: number;
+  normal: RangeSplit;
+  strict: RangeSplit;
+  sparkline: SparklinePoint[]; // oldest first; bg_time in epoch ms
+}
+
 export interface DailyAvg {
   bg_date: string;
   bg_mmol: number;

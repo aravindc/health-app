@@ -258,7 +258,8 @@ All endpoints require an `X-API-Key` header if `API_KEYS` is configured. Excepti
 | GET    | `/dailytir/:days`                 | Daily Time In Range for past N days      |
 | GET    | `/avgmmol/:period`                | Average mmol/L for period (1h–90d)       |
 | GET    | `/quart/:days`                    | Quartile distribution for past N days    |
-| GET    | `/gmi/:days`                      | Glucose Management Indicator (min 7 days)|
+| GET    | `/gmi/:days`                      | Glucose Management Indicator (more than 7 days)|
 | GET    | `/percentinrange/:hours`          | % of readings in strict range            |
+| GET    | `/insightstats/:hours`            | All Insights card stats for the last N hours (% in range, mean, median, SD, CV, quartiles, highs/lows, unicorns, range splits, 288-point sparkline) |
 | GET    | `/timeinrange/:hours`             | Consecutive time in strict range         |
 | PUT    | `/insulin`                        | Log an insulin injection                 |

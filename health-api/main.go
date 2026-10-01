@@ -132,6 +132,7 @@ func main() {
 		api.GET("/timeinrange/:hours", h.GetTimeInRange)
 		api.GET("/percentinrange/:hours", h.GetPercentInRange)
 		api.GET("/gmi/:days", h.GetGmi)
+		api.GET("/insightstats/:hours", h.GetInsightStats)
 		api.GET("/7dsparkline/:day_num", h.Get7DaySparkline)
 		api.GET("/last24hsparkline", h.GetLast24hSparkline)
 

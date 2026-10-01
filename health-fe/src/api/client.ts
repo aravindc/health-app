@@ -8,6 +8,7 @@ import type {
   GmiResponse,
   PercentInRange,
   DailyTir,
+  InsightStats,
   BolusChart,
   BasalChart,
 } from "./types";
@@ -38,6 +39,8 @@ export const api = {
   getAvgMmol: (period: string) => fetchJSON<AvgMmol>(`/avgmmol/${period}`),
   getQuart: (days: number) => fetchJSON<QuartPoint[]>(`/quart/${days}`),
   getGmi: (days: number) => fetchJSON<GmiResponse>(`/gmi/${days}`),
+  getInsightStats: (hours: number) =>
+    fetchJSON<InsightStats>(`/insightstats/${hours}`),
   getPercentInRange: (hours: number) =>
     fetchJSON<PercentInRange[]>(`/percentinrange/${hours}`),
   getDailyAvg: (days: number) => fetchJSON<DailyAvg[]>(`/dailyavg/${days}`),

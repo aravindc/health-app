@@ -2,14 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "./api/client";
 import type {
   LastReading,
-  SparklinePoint,
-  DataPoint,
   DailyAvg,
   DailyTir,
-  AvgMmol,
-  QuartPoint,
   GmiResponse,
-  PercentInRange,
+  InsightStats,
 } from "./api/types";
 import CurrentReading from "./components/CurrentReading";
 import GlucoseInsulinChart from "./components/GlucoseInsulinChart";
@@ -19,16 +15,15 @@ import { avgColor, tirColor } from "./heatmapColors";
 import "./App.css";
 
 const REFRESH_INTERVAL = 60_000;
+// The 90-day heatmaps and GMI move slowly, so they refresh less often (the
+// same window as the Insights cards' longer periods, see useCachedFetch).
+const SLOW_REFRESH_INTERVAL = 5 * 60_000;
 const HEATMAP_DAYS = 90;
 
 function App() {
   const [lastReading, setLastReading] = useState<LastReading | null>(null);
-  const [sparkline24h, setSparkline24h] = useState<SparklinePoint[]>([]);
-  const [dataPoints24h, setDataPoints24h] = useState<DataPoint[]>([]);
-  const [avgMmol24h, setAvgMmol24h] = useState<AvgMmol | null>(null);
-  const [quartiles, setQuartiles] = useState<QuartPoint[]>([]);
+  const [stats24h, setStats24h] = useState<InsightStats | null>(null);
   const [gmi, setGmi] = useState<GmiResponse | null>(null);
-  const [percentInRange, setPercentInRange] = useState<PercentInRange[]>([]);
   const [dailyAvg, setDailyAvg] = useState<DailyAvg[]>([]);
   const [dailyTir, setDailyTir] = useState<DailyTir[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -38,33 +33,30 @@ function App() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [lr, sp, dp, avg, q, g, pir, da, dt] = await Promise.allSettled([
+      const [lr, st] = await Promise.allSettled([
         api.getLastReading(),
-        api.getLast24hSparkline(),
-        api.getLastXh(24),
-        api.getAvgMmol("1d"),
-        api.getQuart(1),
-        api.getGmi(90),
-        api.getPercentInRange(24),
-        api.getDailyAvg(HEATMAP_DAYS),
-        api.getDailyTir(HEATMAP_DAYS),
+        api.getInsightStats(24),
       ]);
 
       if (lr.status === "fulfilled") setLastReading(lr.value);
-      if (sp.status === "fulfilled") setSparkline24h(sp.value);
-      if (dp.status === "fulfilled") setDataPoints24h(dp.value);
-      if (avg.status === "fulfilled") setAvgMmol24h(avg.value);
-      if (q.status === "fulfilled") setQuartiles(q.value);
-      if (g.status === "fulfilled") setGmi(g.value);
-      if (pir.status === "fulfilled") setPercentInRange(pir.value);
-      if (da.status === "fulfilled") setDailyAvg(da.value);
-      if (dt.status === "fulfilled") setDailyTir(dt.value);
+      if (st.status === "fulfilled") setStats24h(st.value);
 
       setError(null);
       setRefreshedAt(Date.now());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch data");
     }
+  }, []);
+
+  const fetchSlowData = useCallback(async () => {
+    const [g, da, dt] = await Promise.allSettled([
+      api.getGmi(90),
+      api.getDailyAvg(HEATMAP_DAYS),
+      api.getDailyTir(HEATMAP_DAYS),
+    ]);
+    if (g.status === "fulfilled") setGmi(g.value);
+    if (da.status === "fulfilled") setDailyAvg(da.value);
+    if (dt.status === "fulfilled") setDailyTir(dt.value);
   }, []);
 
   useEffect(() => {
@@ -77,6 +69,14 @@ function App() {
     const id = setInterval(fetchData, REFRESH_INTERVAL);
     return () => clearInterval(id);
   }, [fetchData]);
+
+  useEffect(() => {
+    // Same fetch-on-mount-then-poll pattern as above.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSlowData();
+    const id = setInterval(fetchSlowData, SLOW_REFRESH_INTERVAL);
+    return () => clearInterval(id);
+  }, [fetchSlowData]);
 
   const avgHeatmapData = dailyAvg.map((d) => ({
     date: d.bg_date.slice(0, 10),
@@ -105,12 +105,9 @@ function App() {
         <GlucoseInsulinChart refreshedAt={refreshedAt} />
 
         <InsightsGrid
-          avgMmol24h={avgMmol24h}
-          quartiles={quartiles}
+          stats24h={stats24h}
           gmi={gmi}
-          percentInRange={percentInRange}
-          sparkline24h={sparkline24h}
-          dataPoints24h={dataPoints24h}
+          refreshedAt={refreshedAt}
         />
 
         <div className="heatmaps">

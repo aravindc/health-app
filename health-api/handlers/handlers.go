@@ -129,18 +129,11 @@ func round(val float64, precision int) float64 {
 
 // getDataInWindow fetches DataPoints in [from, to) time window
 func (h *Handler) getDataInWindow(from, to time.Time) ([]DataPoint, error) {
-	minMmol, err := strconv.ParseFloat(h.Cfg.MinMmol, 64)
+	t, err := h.thresholds()
 	if err != nil {
 		return nil, err
 	}
-	strictMaxMmol, err := strconv.ParseFloat(h.Cfg.StrictMaxMmol, 64)
-	if err != nil {
-		return nil, err
-	}
-	medicalMaxMmol, err := strconv.ParseFloat(h.Cfg.MedicalMaxMmol, 64)
-	if err != nil {
-		return nil, err
-	}
+	minMmol, strictMaxMmol, medicalMaxMmol := t.Min, t.StrictMax, t.MedicalMax
 
 	var results []models.NsPart
 	latResponse := []DataPoint{}
