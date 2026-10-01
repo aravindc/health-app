@@ -1,5 +1,6 @@
 import InsightCard from "./InsightCard";
 import MiniSparkline from "./MiniSparkline";
+import QuartileCurve from "./QuartileCurve";
 import type {
   AvgMmol,
   QuartPoint,
@@ -147,13 +148,12 @@ export default function InsightsGrid({
           period="24 hours"
           description="25th, 50th (median, centre) and 75th percentile of the last 24 hours of readings. Half of all readings fall between the outer two."
         >
-          <div className="quartile-display">
-            <span className="quartile-val">{quarts.q1.toFixed(1)}</span>
-            <span className="quartile-val quartile-val--mid">
-              {quarts.q2.toFixed(1)}
-            </span>
-            <span className="quartile-val">{quarts.q3.toFixed(1)}</span>
-          </div>
+          <QuartileCurve
+            q1={quarts.q1}
+            median={quarts.q2}
+            q3={quarts.q3}
+            empty={quartiles.length === 0}
+          />
         </InsightCard>
 
         <InsightCard
