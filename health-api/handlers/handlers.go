@@ -836,10 +836,17 @@ func (h *Handler) GetGmi(c *gin.Context) {
 
 // GetLastReading (GET /lastreading)
 func (h *Handler) GetLastReading(c *gin.Context) {
-	var readings []models.Latest
+	var readings []models.NsPart
 
-	// Get the last 2 readings
-	tx := h.DB.Order("bg_time desc").Limit(2).Find(&readings)
+	// Get the last 2 readings. This reads ns_part directly, ordered by its
+	// indexed partition key, rather than going through the `latest` view:
+	// that view orders by ns_time/1000, which no index covers, so every call
+	// sorted the whole table (~300 ms). ns_datetime is the same instant as
+	// ns_time (both sync services set it from the same timestamp).
+	tx := h.DB.Select("ns_time", "sgv", "trend").
+		Order("ns_datetime desc").
+		Limit(2).
+		Find(&readings)
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
 		return
@@ -852,14 +859,16 @@ func (h *Handler) GetLastReading(c *gin.Context) {
 	lastReading := readings[0]
 	prevReading := readings[1]
 
-	bgMmol := round(lastReading.BgMmol, 1)
-	bgMmolDiff := round(lastReading.BgMmol-prevReading.BgMmol, 1)
+	// Same rounding as the `latest` view (sgv/18 to 2 places) followed by
+	// the 1-place rounding this endpoint has always applied.
+	lastMmol := round(float64(lastReading.Sgv)/SgvToMmolFactor, 2)
+	prevMmol := round(float64(prevReading.Sgv)/SgvToMmolFactor, 2)
 
 	c.JSON(http.StatusOK, gin.H{
-		"bg_time":      lastReading.BgTime,
-		"bg_mmol":      bgMmol,
-		"bg_trend":     lastReading.BgTrend,
-		"bg_mmol_diff": bgMmolDiff,
+		"bg_time":      lastReading.NsTime / 1000,
+		"bg_mmol":      round(lastMmol, 1),
+		"bg_trend":     lastReading.Trend,
+		"bg_mmol_diff": round(lastMmol-prevMmol, 1),
 	})
 }
 
