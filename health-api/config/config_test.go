@@ -137,12 +137,13 @@ func TestLoadConfig_CORSAllowedOriginsDefaults(t *testing.T) {
 	}{
 		{"production", defaultProdCORSOrigins},
 		{"development", defaultDevCORSOrigins},
-		{"", defaultDevCORSOrigins},
+		{"", defaultProdCORSOrigins},
 	}
 	for _, tt := range tests {
-		t.Run("NS_ENV="+tt.appEnv, func(t *testing.T) {
+		t.Run("APP_ENV="+tt.appEnv, func(t *testing.T) {
 			setEnv(t, map[string]string{
-				"NS_ENV":               tt.appEnv,
+				"APP_ENV":              tt.appEnv,
+				"NS_ENV":               "",
 				"CORS_ALLOWED_ORIGINS": "",
 			})
 
@@ -154,6 +155,43 @@ func TestLoadConfig_CORSAllowedOriginsDefaults(t *testing.T) {
 				t.Errorf("CORSAllowedOrigins = %v, want %v", cfg.CORSAllowedOrigins, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadConfig_AppEnv(t *testing.T) {
+	tests := []struct {
+		name, appEnv, nsEnv, want string
+	}{
+		{"unset defaults to production", "", "", EnvProduction},
+		{"APP_ENV development", "development", "", EnvDevelopment},
+		{"APP_ENV production", "production", "", EnvProduction},
+		{"case and spaces ignored", " Development ", "", EnvDevelopment},
+		{"NS_ENV fallback", "", "development", EnvDevelopment},
+		{"APP_ENV wins over NS_ENV", "production", "development", EnvProduction},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setEnv(t, map[string]string{"APP_ENV": tt.appEnv, "NS_ENV": tt.nsEnv})
+			cfg, err := LoadConfig()
+			if err != nil {
+				t.Fatalf("LoadConfig failed: %v", err)
+			}
+			if cfg.AppEnv != tt.want {
+				t.Errorf("AppEnv = %q, want %q", cfg.AppEnv, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_AppEnvRejectsUnknown(t *testing.T) {
+	for _, env := range []map[string]string{
+		{"APP_ENV": "prod", "NS_ENV": ""},
+		{"APP_ENV": "", "NS_ENV": "staging"},
+	} {
+		setEnv(t, env)
+		if _, err := LoadConfig(); err == nil {
+			t.Errorf("%v: expected an error", env)
+		}
 	}
 }
 

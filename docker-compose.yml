@@ -85,7 +85,11 @@ services:
     # Defined here rather than as a Dockerfile HEALTHCHECK so it also works
     # under Podman (OCI images don't carry HEALTHCHECK).
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O /dev/null http://localhost:8080/health || exit 1",
+        ]
       interval: 5s
       timeout: 3s
       start_period: 30s
@@ -121,7 +125,7 @@ services:
         restart: true
   bytebase:
     container_name: bytebase
-    image: docker.io/bytebase/bytebase:latest
+    image: docker.io/bytebase/bytebase:3.23.0
     init: true
     networks:
       - health_be

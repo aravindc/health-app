@@ -215,7 +215,7 @@ sees your Dexcom password.
 | `.env` (root) | `health-db`, `health-sync`, `health-mongo-sync`, `health-api`, `health-tandem-sync` | `POSTGRES_*` |
 | `health-sync/.env` | `health-sync` | `BRIDGE_*`, `APPLICATION_ID`, sync settings |
 | `health-mongo-sync/.env` | `health-mongo-sync` | `MONGO_*` |
-| `health-api/.env` | `health-api` | Glucose ranges, `API_KEYS` |
+| `health-api/.env` | `health-api` | Glucose ranges, `API_KEYS`, `APP_ENV` (production unless set to `development`) |
 | `health-tandem-sync/.env` | `health-tandem-sync` | `TANDEM_USERNAME/PASSWORD` only — `POSTGRES_*` comes from the root `.env` (see its own `env_file:` list in `docker-compose.yml`), not duplicated here |
 
 `health-db` itself has no per-service `.env` file — the root `.env` is all

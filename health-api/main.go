@@ -84,12 +84,13 @@ func main() {
 	}
 	slog.Info("Database migrations up to date")
 
-	// 3. Set Gin mode from config
-	if cfg.AppEnv == "production" {
-		gin.SetMode(gin.ReleaseMode)
-	} else {
+	// 3. Set Gin mode from config: release unless APP_ENV=development.
+	if cfg.AppEnv == config.EnvDevelopment {
 		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
 	}
+	slog.Info("Environment", "app_env", cfg.AppEnv, "gin_mode", gin.Mode())
 	r := gin.Default()
 	// Without this gin trusts X-Forwarded-For from anyone, so a client could
 	// send a different fake IP per request and slip past the rate limiter.
