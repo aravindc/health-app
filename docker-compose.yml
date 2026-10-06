@@ -105,6 +105,10 @@ services:
         # Shown as <meta name="app-version"> to check which commit is deployed.
         # Set with GIT_SHA=$(git rev-parse --short HEAD) docker compose up --build.
         GIT_SHA: ${GIT_SHA:-unknown}
+    # nginx runs as a non-root user (health-fe/Dockerfile) but listens on
+    # port 80 inside the container; let unprivileged processes bind it.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     ports:
       - "127.0.0.1:9083:80"
     restart: on-failure
