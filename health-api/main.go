@@ -108,9 +108,9 @@ func main() {
 	h := handlers.NewHandler(db, cfg)
 
 	// 6. Define Routes
-	// Public endpoints (no auth)
+	// Public endpoints (no auth). Prometheus metrics are served on their
+	// own internal port instead (see newMetricsServer).
 	r.GET("/health", h.HealthReady)
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Protected routes with API key auth
 	api := r.Group("/")
@@ -163,6 +163,19 @@ func main() {
 		}
 	}()
 
+	metricsPort := os.Getenv("METRICS_PORT")
+	if metricsPort == "" {
+		metricsPort = "9090"
+	}
+	metricsSrv := newMetricsServer(":" + metricsPort)
+	go func() {
+		slog.Info("Starting metrics server", "port", metricsPort)
+		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Metrics server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -175,5 +188,24 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Error("Server shutdown error", "error", err)
 	}
+	if err := metricsSrv.Shutdown(ctx); err != nil {
+		slog.Error("Metrics server shutdown error", "error", err)
+	}
 	slog.Info("Server stopped")
+}
+
+// newMetricsServer serves Prometheus metrics, and nothing else, on its own
+// port. Keeping them off the API's port keeps them out of the health-fe
+// /api proxy (and anything else in front of the API): the metrics list
+// every route and when the app is used. The port isn't published by
+// docker-compose, so only containers on health-api's networks (e.g. a
+// Prometheus scraping http://health-api:9090/metrics) can reach it.
+func newMetricsServer(addr string) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	return &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 }
