@@ -166,3 +166,37 @@ func TestLoadConfig_CORSAllowedOriginsRejectsMissingScheme(t *testing.T) {
 		t.Fatal("expected an error for an origin without http:// or https://")
 	}
 }
+
+func TestLoadConfig_TrustedProxiesDefault(t *testing.T) {
+	setEnv(t, map[string]string{"TRUSTED_PROXIES": ""})
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if !slices.Equal(cfg.TrustedProxies, DefaultTrustedProxies) {
+		t.Errorf("expected defaults %v, got %v", DefaultTrustedProxies, cfg.TrustedProxies)
+	}
+}
+
+func TestLoadConfig_TrustedProxiesParsedAndTrimmed(t *testing.T) {
+	setEnv(t, map[string]string{"TRUSTED_PROXIES": " 172.18.0.0/16 , 10.0.0.5,,fd00::/8 "})
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	want := []string{"172.18.0.0/16", "10.0.0.5", "fd00::/8"}
+	if !slices.Equal(cfg.TrustedProxies, want) {
+		t.Errorf("expected %v, got %v", want, cfg.TrustedProxies)
+	}
+}
+
+func TestLoadConfig_TrustedProxiesRejectsInvalid(t *testing.T) {
+	for _, v := range []string{"caddy", "172.18.0.0/99", "10.0.0.0/8,not-an-ip"} {
+		t.Run(v, func(t *testing.T) {
+			setEnv(t, map[string]string{"TRUSTED_PROXIES": v})
+			if _, err := LoadConfig(); err == nil {
+				t.Fatalf("expected an error for TRUSTED_PROXIES=%q", v)
+			}
+		})
+	}
+}

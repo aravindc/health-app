@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"net/netip"
 	"os"
 	"strings"
 
@@ -20,6 +21,28 @@ type Config struct {
 	// CORSAllowedOrigins is the browser origins allowed to call the API
 	// cross-origin: CORS_ALLOWED_ORIGINS if set, else the defaults for AppEnv.
 	CORSAllowedOrigins []string
+	// TrustedProxies is the IPs/CIDRs whose X-Forwarded-For entries the API
+	// believes when working out a request's client IP (gin's ClientIP, used
+	// by the rate limiter): TRUSTED_PROXIES if set, else
+	// DefaultTrustedProxies.
+	TrustedProxies []string
+}
+
+// DefaultTrustedProxies covers loopback and the private ranges Docker
+// networks use, i.e. the Caddy → health-fe nginx → health-api chain.
+// gin reads X-Forwarded-For right to left and stops at the first address
+// outside these, so a public client can't pass off a spoofed address:
+// Caddy replaces the header for untrusted clients, nginx appends Caddy's
+// address, and the client's own public IP is the first untrusted entry.
+// Clients on these private ranges (LAN, Docker) can still spoof; narrow
+// TRUSTED_PROXIES to the actual proxy addresses to rule that out.
+var DefaultTrustedProxies = []string{
+	"127.0.0.0/8",
+	"::1/128",
+	"10.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"fc00::/7",
 }
 
 // Default CORS origins, used when CORS_ALLOWED_ORIGINS is unset.
@@ -72,6 +95,20 @@ func LoadConfig() (*Config, error) {
 			return nil, fmt.Errorf("CORS_ALLOWED_ORIGINS: %q must start with http:// or https://", o)
 		}
 	}
+	trustedProxies := splitCSV(os.Getenv("TRUSTED_PROXIES"))
+	for _, p := range trustedProxies {
+		if _, err := netip.ParsePrefix(p); err == nil {
+			continue
+		}
+		if _, err := netip.ParseAddr(p); err == nil {
+			continue
+		}
+		return nil, fmt.Errorf("TRUSTED_PROXIES: %q is not an IP address or CIDR", p)
+	}
+	if len(trustedProxies) == 0 {
+		trustedProxies = DefaultTrustedProxies
+	}
+
 	if len(corsOrigins) == 0 {
 		if appEnv == "production" {
 			corsOrigins = defaultProdCORSOrigins
@@ -88,5 +125,6 @@ func LoadConfig() (*Config, error) {
 		AppEnv:             appEnv,
 		APIKeys:            apiKeys,
 		CORSAllowedOrigins: corsOrigins,
+		TrustedProxies:     trustedProxies,
 	}, nil
 }
