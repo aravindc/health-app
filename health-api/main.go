@@ -77,6 +77,13 @@ func main() {
 		gin.SetMode(gin.DebugMode)
 	}
 	r := gin.Default()
+	// Without this gin trusts X-Forwarded-For from anyone, so a client could
+	// send a different fake IP per request and slip past the rate limiter.
+	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		slog.Error("Invalid TRUSTED_PROXIES", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Trusted proxies", "proxies", cfg.TrustedProxies)
 
 	// 4. Add CORS Middleware
 	corsConfig := cors.DefaultConfig()
