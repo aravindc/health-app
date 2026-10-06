@@ -10,7 +10,12 @@ ARG GIT_SHA=unknown
 ENV VITE_GIT_SHA=${GIT_SHA}
 RUN npm run build
 
-FROM docker.io/library/nginx:alpine
+# nginx's own unprivileged image: runs as the `nginx` user (UID 101), with
+# its PID and temp files in writable locations. It still listens on port 80
+# (nginx.conf), which docker-compose allows non-root processes to bind via
+# net.ipv4.ip_unprivileged_port_start, so Caddy's upstream health-fe:80 and
+# the host port mapping are unchanged.
+FROM docker.io/nginxinc/nginx-unprivileged:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
