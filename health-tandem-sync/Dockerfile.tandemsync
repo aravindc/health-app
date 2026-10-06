@@ -10,9 +10,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o tandemsync ./cmd/tandemsync
 
 FROM docker.io/library/alpine:3.21
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata \
+ && addgroup -S app && adduser -S -G app -H -h /app app
 
 WORKDIR /app
 COPY --from=builder /app/tandemsync .
+
+# Run as an unprivileged user: it only reads its config, talks to the
+# database and remote APIs, and writes no files (only the
+# host-run tandemload backfill keeps a chunk cache).
+USER app
 
 ENTRYPOINT ["./tandemsync"]
