@@ -192,13 +192,16 @@ func (h *Handler) Root(c *gin.Context) {
 
 // HealthReady (GET /health)
 func (h *Handler) HealthReady(c *gin.Context) {
+	// /health is public (outside API-key auth, for the container
+	// healthcheck), so the cause is logged rather than returned: driver
+	// errors can include the database's host and address.
 	sqlDB, err := h.DB.DB()
-	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "database": err.Error()})
-		return
+	if err == nil {
+		err = sqlDB.Ping()
 	}
-	if err := sqlDB.Ping(); err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "database": err.Error()})
+	if err != nil {
+		slog.Error("Health check: database unavailable", "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "database": "unavailable"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "OK", "database": "OK"})
@@ -218,7 +221,7 @@ func (h *Handler) GetLatest(c *gin.Context) {
 	tx := h.DB.Where("created_at >= ?", h.historyStart(time.Now())).
 		Order("bg_time desc").Limit(PageSizeLatest).Offset(offset).Find(&latestResponse)
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 
@@ -242,7 +245,7 @@ func (h *Handler) GetDailyAvg(c *gin.Context) {
 	tx := h.DB.Where("bg_date >= ?", h.historyStart(time.Now())).
 		Order("bg_date desc").Limit(days).Offset(0).Find(&dailyResponse)
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 
@@ -269,7 +272,7 @@ func (h *Handler) GetDailyTir(c *gin.Context) {
 		Find(&dailyResponse)
 
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 
@@ -290,7 +293,7 @@ func (h *Handler) GetAvgMmol(c *gin.Context) {
 		if tx.Error == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"detail": "Time period not found"})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+			serverError(c, tx.Error)
 		}
 		return
 	}
@@ -312,7 +315,7 @@ func (h *Handler) GetLast12h(c *gin.Context) {
 	tx := h.DB.Where("created_at >= ?", h.historyStart(time.Now())).
 		Order("bg_time desc").Limit(PageSize12h).Offset(offset).Find(&results)
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 
@@ -347,7 +350,7 @@ func (h *Handler) GetQuart(c *gin.Context) {
 		Where("ns_datetime >= ?", startTime).
 		Pluck("sgv", &sgvResults)
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 	if len(sgvResults) == 0 {
@@ -409,7 +412,7 @@ func (h *Handler) GetLast4h(c *gin.Context) {
 	tx := h.DB.Where("created_at >= ?", h.historyStart(time.Now())).
 		Order("bg_time desc").Limit(PageSize4h).Offset(offset).Find(&results)
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 
@@ -438,7 +441,7 @@ func (h *Handler) GetLastXh(c *gin.Context) {
 
 	latResponse, err := h.getData(hours)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get data"})
+		serverError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, latResponse)
@@ -468,7 +471,7 @@ func (h *Handler) GetLastXhOffset(c *gin.Context) {
 
 	data, err := h.getDataInWindow(from, to)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get data"})
+		serverError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, data)
@@ -488,7 +491,7 @@ func (h *Handler) GetRangeChart(c *gin.Context) {
 
 	data, err := h.getDataInWindow(from, to)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get data"})
+		serverError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, data)
@@ -703,7 +706,7 @@ func (h *Handler) GetTimeInRange(c *gin.Context) {
 
 	initData, err := h.getData(hours) // Already sorted desc by time
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get data"})
+		serverError(c, err)
 		return
 	}
 
@@ -743,7 +746,7 @@ func (h *Handler) GetPercentInRange(c *gin.Context) {
 
 	initData, err := h.getData(hours)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get data"})
+		serverError(c, err)
 		return
 	}
 	if len(initData) == 0 {
@@ -800,7 +803,7 @@ func (h *Handler) Get7DaySparkline(c *gin.Context) {
 		Find(&dayResponse)
 
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 
@@ -819,7 +822,7 @@ func (h *Handler) GetLast24hSparkline(c *gin.Context) {
 		Find(&dayResponse)
 
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 
@@ -853,7 +856,7 @@ func (h *Handler) GetGmi(c *gin.Context) {
 		Find(&gmiResponse)
 
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 	if len(gmiResponse) == 0 {
@@ -896,7 +899,7 @@ func (h *Handler) GetLastReading(c *gin.Context) {
 		Limit(2).
 		Find(&readings)
 	if tx.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
+		serverError(c, tx.Error)
 		return
 	}
 	if len(readings) < 2 {

@@ -196,12 +196,12 @@ func (h *Handler) GetInsightStats(c *gin.Context) {
 	}
 	t, err := h.thresholds()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Invalid range thresholds"})
+		serverError(c, err)
 		return
 	}
 	points, err := h.getData(hours)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to get data"})
+		serverError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, computeInsightStats(hours, points, t))

@@ -19,6 +19,14 @@ uses [Semantic Versioning](https://semver.org/).
   - `/firstdate` reports its start, so the chart pages back no further.
   - Paged and daily endpoints return nothing older.
 
+- **health-api: database errors were sent to clients**
+  ([GHSA-9v5g-jrhj-5mj7](https://github.com/aravindc/health-app/security/advisories/GHSA-9v5g-jrhj-5mj7)).
+  Failed requests answered with the raw database or driver error, which
+  can include the database user, name and host. The public `/health`
+  endpoint did the same. They now answer with a generic message (`/health`:
+  `"database": "unavailable"`), with the same status codes, and the full
+  error goes to the server log along with the request's route.
+
 ### Added
 
 - **health-api: `MAX_HISTORY_DAYS` setting** to extend the history window
