@@ -40,6 +40,10 @@ uses [Semantic Versioning](https://semver.org/).
   styles, no framing), `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` and a
   `Permissions-Policy`, and no longer reveals its version.
+- **health-api: API keys are compared in constant time** (#54). The
+  `X-API-Key` header is checked against every configured key as a SHA-256
+  digest with `subtle.ConstantTimeCompare`, instead of with `==`, so
+  response times reveal nothing about the keys.
 
 ### Removed
 

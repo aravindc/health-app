@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,7 +22,16 @@ import (
 )
 
 // APIKeyAuthMiddleware validates the X-API-Key header against a list of allowed keys.
+//
+// Keys are compared as SHA-256 digests with subtle.ConstantTimeCompare, and
+// every allowed key is checked, so the response time reveals neither how
+// much of a key matched, nor its length, nor which key it was.
 func APIKeyAuthMiddleware(apiKeys []string) gin.HandlerFunc {
+	digests := make([][sha256.Size]byte, len(apiKeys))
+	for i, key := range apiKeys {
+		digests[i] = sha256.Sum256([]byte(key))
+	}
+
 	return func(c *gin.Context) {
 		apiKey := c.GetHeader("X-API-Key")
 
@@ -29,11 +40,14 @@ func APIKeyAuthMiddleware(apiKeys []string) gin.HandlerFunc {
 			return
 		}
 
-		for _, key := range apiKeys {
-			if key == apiKey {
-				c.Next()
-				return
-			}
+		presented := sha256.Sum256([]byte(apiKey))
+		match := 0
+		for i := range digests {
+			match |= subtle.ConstantTimeCompare(presented[:], digests[i][:])
+		}
+		if match == 1 {
+			c.Next()
+			return
 		}
 
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"detail": "Invalid or missing API Key"})
