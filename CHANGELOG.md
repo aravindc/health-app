@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-06
+
 ### Security
 
 - **health-api: the rate limiter could be bypassed by spoofing `X-Forwarded-For`**
@@ -40,5 +42,6 @@ uses [Semantic Versioning](https://semver.org/).
 
 - Initial release.
 
-[Unreleased]: https://github.com/aravindc/health-app/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/aravindc/health-app/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/aravindc/health-app/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/aravindc/health-app/releases/tag/v1.0.0
