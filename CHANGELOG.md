@@ -33,6 +33,14 @@ uses [Semantic Versioning](https://semver.org/).
   beyond 90 days, e.g. `MAX_HISTORY_DAYS=365`. Values below 90 are
   rejected at startup.
 
+### Changed
+
+- **health-fe: security headers on every response** (#52). nginx now sends
+  a strict Content-Security-Policy (only `'self'`, no inline scripts or
+  styles, no framing), `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` and a
+  `Permissions-Policy`, and no longer reveals its version.
+
 ### Removed
 
 - **health-api: `PUT /insulin`**, which nothing in the project used (#59).
