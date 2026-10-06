@@ -215,7 +215,8 @@ func (h *Handler) GetLatest(c *gin.Context) {
 	offset := PageSizeLatest * (pageNum - 1)
 	var latestResponse []models.Latest
 
-	tx := h.DB.Order("bg_time desc").Limit(PageSizeLatest).Offset(offset).Find(&latestResponse)
+	tx := h.DB.Where("created_at >= ?", h.historyStart(time.Now())).
+		Order("bg_time desc").Limit(PageSizeLatest).Offset(offset).Find(&latestResponse)
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
 		return
@@ -231,9 +232,15 @@ func (h *Handler) GetDailyAvg(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of days"})
 		return
 	}
+	if !h.withinDays(c, "days", days) {
+		return
+	}
 
 	var dailyResponse []models.DailyAvg
-	tx := h.DB.Order("bg_date desc").Limit(days).Offset(0).Find(&dailyResponse)
+	// Also floor the date: N rows reach back further than N days when some
+	// days have no data.
+	tx := h.DB.Where("bg_date >= ?", h.historyStart(time.Now())).
+		Order("bg_date desc").Limit(days).Offset(0).Find(&dailyResponse)
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
 		return
@@ -249,10 +256,14 @@ func (h *Handler) GetDailyTir(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of days"})
 		return
 	}
+	if !h.withinDays(c, "days", days) {
+		return
+	}
 
 	var dailyResponse []DailyTirResponse
 	tx := h.DB.Model(&models.DailyTir{}).
 		Select("bg_date", "pir_strict", "pir_medical").
+		Where("bg_date >= ?", h.historyStart(time.Now())).
 		Order("bg_date desc").
 		Limit(days).
 		Find(&dailyResponse)
@@ -298,7 +309,8 @@ func (h *Handler) GetLast12h(c *gin.Context) {
 	offset := PageSize12h * (pageNum - 1)
 	var results []models.Latest
 
-	tx := h.DB.Order("bg_time desc").Limit(PageSize12h).Offset(offset).Find(&results)
+	tx := h.DB.Where("created_at >= ?", h.historyStart(time.Now())).
+		Order("bg_time desc").Limit(PageSize12h).Offset(offset).Find(&results)
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
 		return
@@ -321,6 +333,9 @@ func (h *Handler) GetQuart(c *gin.Context) {
 	days, err := strconv.Atoi(c.Param("days"))
 	if err != nil || days < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of days"})
+		return
+	}
+	if !h.withinDays(c, "days", days) {
 		return
 	}
 
@@ -391,7 +406,8 @@ func (h *Handler) GetLast4h(c *gin.Context) {
 	offset := PageSize4h * (pageNum - 1)
 	var results []models.Latest
 
-	tx := h.DB.Order("bg_time desc").Limit(PageSize4h).Offset(offset).Find(&results)
+	tx := h.DB.Where("created_at >= ?", h.historyStart(time.Now())).
+		Order("bg_time desc").Limit(PageSize4h).Offset(offset).Find(&results)
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": tx.Error.Error()})
 		return
@@ -416,6 +432,9 @@ func (h *Handler) GetLastXh(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of hours"})
 		return
 	}
+	if !h.withinHours(c, "hours", hours) {
+		return
+	}
 
 	latResponse, err := h.getData(hours)
 	if err != nil {
@@ -438,6 +457,10 @@ func (h *Handler) GetLastXhOffset(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "Wrong offset_hours"})
 		return
 	}
+	// The window reaches back hours + offset_hours from now.
+	if !h.withinHours(c, "hours + offset_hours", hours+offsetHours) {
+		return
+	}
 
 	now := time.Now()
 	to := now.Add(-time.Duration(offsetHours) * time.Hour)
@@ -457,7 +480,7 @@ func (h *Handler) GetLastXhOffset(c *gin.Context) {
 // unlike a calendar-day window, from/to need not be midnight-aligned
 // (e.g. "yesterday 11pm to today 11pm" while panning).
 func (h *Handler) GetRangeChart(c *gin.Context) {
-	from, to, err := rangeWindow(c)
+	from, to, err := h.rangeWindow(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
 		return
@@ -474,8 +497,10 @@ func (h *Handler) GetRangeChart(c *gin.Context) {
 // rangeWindow parses the from/to query params (RFC3339 timestamps) shared
 // by every range-paged endpoint (GetRangeChart, GetBolusRangeChart,
 // GetBasalRangeChart) so they all page identically and stay in sync when
-// charted side by side. to must be after from.
-func rangeWindow(c *gin.Context) (from, to time.Time, err error) {
+// charted side by side. to must be after from. The window is clipped to
+// the history the API serves; one entirely before it comes back empty
+// (from == to).
+func (h *Handler) rangeWindow(c *gin.Context) (from, to time.Time, err error) {
 	fromStr := c.Query("from")
 	toStr := c.Query("to")
 	if fromStr == "" || toStr == "" {
@@ -492,17 +517,23 @@ func rangeWindow(c *gin.Context) (from, to time.Time, err error) {
 	if !to.After(from) {
 		return time.Time{}, time.Time{}, fmt.Errorf("to must be after from")
 	}
+	from, to = clipToHistory(from, to, h.historyStart(time.Now()))
 	return from, to, nil
 }
 
 // GetFirstDate (GET /firstdate)
-// Returns the earliest calendar date (YYYY-MM-DD) that has data in ns_part.
+// Returns the earliest calendar date (YYYY-MM-DD) that has data in ns_part,
+// or the start of the history the API serves if that's later (the chart
+// pages back no further than this).
 func (h *Handler) GetFirstDate(c *gin.Context) {
 	var earliest time.Time
 	row := h.DB.Raw("SELECT MIN(ns_datetime) FROM ns_part").Row()
 	if err := row.Scan(&earliest); err != nil || earliest.IsZero() {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "No data found"})
 		return
+	}
+	if start := h.historyStart(time.Now()); earliest.Before(start) {
+		earliest = start
 	}
 	c.JSON(http.StatusOK, gin.H{"date": earliest.Local().Format("2006-01-02")})
 }
@@ -540,7 +571,7 @@ func splitDelivered(delivered float64, insulinRequested, foodBolusSize, correcti
 // Doses are windowed by completed_at (when insulin was actually delivered,
 // which is what the activity curve models), not requested_at.
 func (h *Handler) GetBolusRangeChart(c *gin.Context) {
-	from, to, err := rangeWindow(c)
+	from, to, err := h.rangeWindow(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
 		return
@@ -611,9 +642,14 @@ func toActivityPoints(points []insulinactivity.Point) []ActivityPoint {
 // (or until the window's end, for the chart to draw a final step through
 // to rather than stopping short at the last change).
 func (h *Handler) GetBasalRangeChart(c *gin.Context) {
-	from, to, err := rangeWindow(c)
+	from, to, err := h.rangeWindow(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	if !to.After(from) {
+		c.JSON(http.StatusOK, gin.H{"points": []BasalPoint{}, "window_end": to})
 		return
 	}
 
@@ -661,6 +697,9 @@ func (h *Handler) GetTimeInRange(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of hours"})
 		return
 	}
+	if !h.withinHours(c, "hours", hours) {
+		return
+	}
 
 	initData, err := h.getData(hours) // Already sorted desc by time
 	if err != nil {
@@ -696,6 +735,9 @@ func (h *Handler) GetPercentInRange(c *gin.Context) {
 	hours, err := strconv.Atoi(c.Param("hours"))
 	if err != nil || hours < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong number of hours"})
+		return
+	}
+	if !h.withinHours(c, "hours", hours) {
 		return
 	}
 
@@ -738,6 +780,9 @@ func (h *Handler) Get7DaySparkline(c *gin.Context) {
 	dayNum, err := strconv.Atoi(c.Param("day_num"))
 	if err != nil || dayNum < 1 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Wrong day number"})
+		return
+	}
+	if !h.withinDays(c, "day_num", dayNum) {
 		return
 	}
 
@@ -790,6 +835,9 @@ func (h *Handler) GetGmi(c *gin.Context) {
 	}
 	if days <= 7 {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Number of days should be minimum of 7"})
+		return
+	}
+	if !h.withinDays(c, "days", days) {
 		return
 	}
 
