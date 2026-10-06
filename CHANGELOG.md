@@ -6,6 +6,29 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **health-api: a single request could return the whole reading history**
+  ([GHSA-pqw5-gg8q-4r5v](https://github.com/aravindc/health-app/security/advisories/GHSA-pqw5-gg8q-4r5v)).
+  Endpoints taking hours, days or a `from`/`to` window had no upper bound,
+  so one request could return every reading ever stored (~73 MB on a
+  four-year history). The API now serves only the last `MAX_HISTORY_DAYS`
+  (default 90):
+  - Hour and day parameters beyond that are rejected with 400.
+  - `/chart`, `/bolus` and `/basal` windows are clipped to it.
+  - `/firstdate` reports its start, so the chart pages back no further.
+  - Paged and daily endpoints return nothing older.
+
+### Added
+
+- **health-api: `MAX_HISTORY_DAYS` setting** to extend the history window
+  beyond 90 days, e.g. `MAX_HISTORY_DAYS=365`. Values below 90 are
+  rejected at startup.
+
+### Removed
+
+- **health-api: `PUT /insulin`**, which nothing in the project used (#59).
+
 ## [1.0.1] - 2026-10-06
 
 ### Security

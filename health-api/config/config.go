@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -26,7 +27,16 @@ type Config struct {
 	// by the rate limiter): TRUSTED_PROXIES if set, else
 	// DefaultTrustedProxies.
 	TrustedProxies []string
+	// MaxHistoryDays is how far back the API serves data: MAX_HISTORY_DAYS
+	// if set, else DefaultMaxHistoryDays. It can only be raised above the
+	// default, since the dashboard's fixed 90-day views (GMI, heatmaps, the
+	// 90d period) need at least that much.
+	MaxHistoryDays int
 }
+
+// DefaultMaxHistoryDays is the API's history window unless an admin
+// extends it with MAX_HISTORY_DAYS.
+const DefaultMaxHistoryDays = 90
 
 // DefaultTrustedProxies covers loopback and the private ranges Docker
 // networks use, i.e. the Caddy → health-fe nginx → health-api chain.
@@ -109,6 +119,15 @@ func LoadConfig() (*Config, error) {
 		trustedProxies = DefaultTrustedProxies
 	}
 
+	maxHistoryDays := DefaultMaxHistoryDays
+	if v := strings.TrimSpace(os.Getenv("MAX_HISTORY_DAYS")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < DefaultMaxHistoryDays {
+			return nil, fmt.Errorf("MAX_HISTORY_DAYS: %q must be a whole number of days, at least %d", v, DefaultMaxHistoryDays)
+		}
+		maxHistoryDays = n
+	}
+
 	if len(corsOrigins) == 0 {
 		if appEnv == "production" {
 			corsOrigins = defaultProdCORSOrigins
@@ -126,5 +145,6 @@ func LoadConfig() (*Config, error) {
 		APIKeys:            apiKeys,
 		CORSAllowedOrigins: corsOrigins,
 		TrustedProxies:     trustedProxies,
+		MaxHistoryDays:     maxHistoryDays,
 	}, nil
 }

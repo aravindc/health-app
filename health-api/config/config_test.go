@@ -200,3 +200,36 @@ func TestLoadConfig_TrustedProxiesRejectsInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfig_MaxHistoryDaysDefault(t *testing.T) {
+	setEnv(t, map[string]string{"MAX_HISTORY_DAYS": ""})
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if cfg.MaxHistoryDays != DefaultMaxHistoryDays {
+		t.Errorf("expected %d, got %d", DefaultMaxHistoryDays, cfg.MaxHistoryDays)
+	}
+}
+
+func TestLoadConfig_MaxHistoryDaysExtended(t *testing.T) {
+	setEnv(t, map[string]string{"MAX_HISTORY_DAYS": " 365 "})
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if cfg.MaxHistoryDays != 365 {
+		t.Errorf("expected 365, got %d", cfg.MaxHistoryDays)
+	}
+}
+
+func TestLoadConfig_MaxHistoryDaysRejectsInvalidOrShorter(t *testing.T) {
+	for _, v := range []string{"30", "89", "0", "-5", "ninety", "90.5"} {
+		t.Run(v, func(t *testing.T) {
+			setEnv(t, map[string]string{"MAX_HISTORY_DAYS": v})
+			if _, err := LoadConfig(); err == nil {
+				t.Fatalf("expected an error for MAX_HISTORY_DAYS=%q", v)
+			}
+		})
+	}
+}
