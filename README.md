@@ -242,12 +242,13 @@ baked into the frontend bundle at build time. It defaults to `/api`
 
 ## API Endpoints
 
-All endpoints require an `X-API-Key` header if `API_KEYS` is configured. Exceptions: `/health` and `/metrics`.
+All endpoints require an `X-API-Key` header if `API_KEYS` is configured, except `/health`.
+
+Prometheus metrics are served separately, at `/metrics` on port `9090` (`METRICS_PORT`). That port isn't published by `docker-compose.yml` or proxied by health-fe, so scrape it from a container on health-api's network: `http://health-api:9090/metrics`.
 
 | Method | Endpoint                          | Description                              |
 |--------|-----------------------------------|------------------------------------------|
 | GET    | `/health`                         | Health check                             |
-| GET    | `/metrics`                        | Prometheus metrics                       |
 | GET    | `/lastreading`                    | Most recent glucose reading + trend      |
 | GET    | `/lastxh/:hours`                  | Readings for the last N hours            |
 | GET    | `/lastxh/:hours/offset/:offset`   | Readings for N hours ending offset ago   |
