@@ -262,4 +262,3 @@ All endpoints require an `X-API-Key` header if `API_KEYS` is configured. Excepti
 | GET    | `/percentinrange/:hours`          | % of readings in strict range            |
 | GET    | `/insightstats/:hours`            | All Insights card stats for the last N hours (% in range, mean, median, SD, CV, quartiles, highs/lows, unicorns, range splits, 288-point sparkline) |
 | GET    | `/timeinrange/:hours`             | Consecutive time in strict range         |
-| PUT    | `/insulin`                        | Log an insulin injection                 |

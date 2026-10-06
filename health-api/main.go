@@ -89,7 +89,7 @@ func main() {
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowOrigins = cfg.CORSAllowedOrigins
 	corsConfig.AllowCredentials = true
-	corsConfig.AllowMethods = []string{"GET", "PUT", "OPTIONS"}
+	corsConfig.AllowMethods = []string{"GET", "OPTIONS"}
 	corsConfig.AllowHeaders = []string{"*"}
 	// Only called for origins not in AllowOrigins: log them so a 403 shows
 	// what the browser actually sent, then reject as before.
@@ -142,8 +142,6 @@ func main() {
 		api.GET("/insightstats/:hours", h.GetInsightStats)
 		api.GET("/7dsparkline/:day_num", h.Get7DaySparkline)
 		api.GET("/last24hsparkline", h.GetLast24hSparkline)
-
-		api.PUT("/insulin", h.PutInsulin)
 	}
 
 	// 7. Start server with graceful shutdown
