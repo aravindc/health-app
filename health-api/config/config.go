@@ -17,8 +17,10 @@ type Config struct {
 	MinMmol        string
 	StrictMaxMmol  string
 	MedicalMaxMmol string
-	AppEnv         string
-	APIKeys        []string
+	// AppEnv is EnvProduction (the default) or EnvDevelopment, from
+	// APP_ENV, or NS_ENV if APP_ENV is unset.
+	AppEnv  string
+	APIKeys []string
 	// CORSAllowedOrigins is the browser origins allowed to call the API
 	// cross-origin: CORS_ALLOWED_ORIGINS if set, else the defaults for AppEnv.
 	CORSAllowedOrigins []string
@@ -32,6 +34,30 @@ type Config struct {
 	// default, since the dashboard's fixed 90-day views (GMI, heatmaps, the
 	// 90d period) need at least that much.
 	MaxHistoryDays int
+}
+
+// The values APP_ENV accepts. Production is the default, so a deployment
+// that leaves APP_ENV unset runs gin in release mode; debug mode has to be
+// asked for.
+const (
+	EnvProduction  = "production"
+	EnvDevelopment = "development"
+)
+
+// loadAppEnv reads APP_ENV, falling back to the older NS_ENV, and rejects
+// anything but EnvProduction or EnvDevelopment so a typo can't go unnoticed.
+func loadAppEnv() (string, error) {
+	name, v := "APP_ENV", strings.TrimSpace(os.Getenv("APP_ENV"))
+	if v == "" {
+		name, v = "NS_ENV", strings.TrimSpace(os.Getenv("NS_ENV"))
+	}
+	switch strings.ToLower(v) {
+	case "", EnvProduction:
+		return EnvProduction, nil
+	case EnvDevelopment:
+		return EnvDevelopment, nil
+	}
+	return "", fmt.Errorf("%s: %q must be %q or %q", name, v, EnvProduction, EnvDevelopment)
 }
 
 // DefaultMaxHistoryDays is the API's history window unless an admin
@@ -98,7 +124,10 @@ func LoadConfig() (*Config, error) {
 
 	apiKeys := splitCSV(os.Getenv("API_KEYS"))
 
-	appEnv := os.Getenv("NS_ENV")
+	appEnv, err := loadAppEnv()
+	if err != nil {
+		return nil, err
+	}
 	corsOrigins := splitCSV(os.Getenv("CORS_ALLOWED_ORIGINS"))
 	for _, o := range corsOrigins {
 		if !strings.HasPrefix(o, "http://") && !strings.HasPrefix(o, "https://") {
@@ -129,7 +158,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	if len(corsOrigins) == 0 {
-		if appEnv == "production" {
+		if appEnv == EnvProduction {
 			corsOrigins = defaultProdCORSOrigins
 		} else {
 			corsOrigins = defaultDevCORSOrigins

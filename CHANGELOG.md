@@ -44,6 +44,15 @@ uses [Semantic Versioning](https://semver.org/).
   `X-API-Key` header is checked against every configured key as a SHA-256
   digest with `subtle.ConstantTimeCompare`, instead of with `==`, so
   response times reveal nothing about the keys.
+- **health-api: production mode is the default** (#53). gin ran in debug
+  mode unless `NS_ENV=production`, and `.env.example` set
+  `NS_ENV=development`, so a deployment copied from it ran in debug mode.
+  It now runs in release mode unless `APP_ENV=development`; `NS_ENV` is
+  still read when `APP_ENV` is unset. Any other value stops startup with
+  an error, and the active mode is logged at startup. **Upgrading:** remove
+  `NS_ENV=development` from `health-api/.env` on a production server.
+- **Bytebase is pinned to 3.23.0** (#55) instead of `latest`, so a rebuild
+  no longer upgrades it without notice. Update the tag deliberately.
 
 ### Removed
 
