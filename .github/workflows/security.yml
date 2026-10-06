@@ -1,0 +1,64 @@
+name: Security
+
+# Dependency vulnerability scanning: govulncheck for each Go module and
+# npm audit for health-fe's production dependencies.
+#
+# Unlike CI, there is no paths filter: new advisories are published
+# against code that hasn't changed, so every module is scanned on every
+# push and PR and again weekly. Dependabot (alerts and security updates,
+# enabled in the repo settings) covers health-fe's dev dependencies and
+# opens the fix PRs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    name: govulncheck (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [health-api, health-sync, health-mongo-sync, health-tandem-sync]
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v5
+      # The module's own Go version, so standard library vulnerabilities
+      # fixed in a later patch release are reported.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      # Fails only on vulnerabilities the code actually calls; ones in
+      # required modules that aren't reachable are listed but don't fail.
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+  npm-audit:
+    name: npm audit (health-fe)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: health-fe
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # Reads package-lock.json only; nothing is installed. Dev
+      # dependencies (build and test tooling) never reach the browser or
+      # the nginx image, so they're left to Dependabot.
+      - run: npm audit --omit=dev

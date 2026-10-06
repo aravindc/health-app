@@ -53,6 +53,11 @@ uses [Semantic Versioning](https://semver.org/).
   `NS_ENV=development` from `health-api/.env` on a production server.
 - **Bytebase is pinned to 3.23.0** (#55) instead of `latest`, so a rebuild
   no longer upgrades it without notice. Update the tag deliberately.
+- **Dependency vulnerability scanning** (#56). A new Security workflow runs
+  `govulncheck` on each Go module and `npm audit --omit=dev` on health-fe,
+  on every push and PR and weekly. health-fe's build tooling was updated
+  to clear three advisories (esbuild 0.28.2, ajv 6.15.0, source-map-js
+  1.2.2); none reached the shipped UI.
 
 ### Removed
 
