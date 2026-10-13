@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-13
+
 ### Security
 
 - **health-api: a single request could return the whole reading history**
@@ -56,6 +58,14 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **health-api: Prometheus metrics on an internal-only port** (#62).
+  `/metrics` moves off the API's port (and health-fe's `/api` proxy) to its
+  own server on `METRICS_PORT` (default 9090), which isn't published:
+  scrape `http://health-api:9090/metrics` from a container on health-api's
+  network.
+- **All containers run as non-root users** (#63, #64). health-fe uses
+  nginx's unprivileged image and still listens on port 80, which compose
+  allows through `net.ipv4.ip_unprivileged_port_start`.
 - **Smaller images, about 1.63 GB → 750 MB in all.**
   - health-predict: 1.43 GB → 629 MB. It builds in two stages, so uv and
     its download cache stay out, and it installs only what serving needs:
@@ -118,6 +128,28 @@ uses [Semantic Versioning](https://semver.org/).
 
 - **health-api: `PUT /insulin`**, which nothing in the project used (#59).
 
+### Upgrade notes
+
+- **Rebuild everything:** every image changed (Go 1.27.2, non-root users,
+  slimmer bases). Behind Caddy:
+  `docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build`.
+- **Caddy's network must be called `caddy-net`** and exist already.
+  `CADDY_NETWORK` is no longer read. health-api joins it as well, so keep
+  only trusted containers on it.
+- **Predictions:** health-predict now starts with the stack. Copy the
+  trained models into `health-predict/models/` first (they're not in git),
+  and set `PREDICT_URL=http://health-predict:8000` in `health-api/.env`.
+  Without models, health-predict reports unhealthy and the dashboard shows
+  no forecast; nothing else is affected.
+- **Production mode is the default.** `NS_ENV=production` still works.
+  Remove any `NS_ENV=development` copied from the old `.env.example`.
+- **The API serves the last 90 days only** by default. Set
+  `MAX_HISTORY_DAYS` (at least 90) in `health-api/.env` to serve more.
+- **Prometheus:** scrape `http://health-api:9090/metrics` (the internal
+  metrics port) instead of `/metrics` on the API.
+- **`PUT /insulin` is gone**, in case anything outside this project called
+  it.
+
 ## [1.0.1] - 2026-10-06
 
 ### Security
@@ -154,6 +186,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 - Initial release.
 
-[Unreleased]: https://github.com/aravindc/health-app/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/aravindc/health-app/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/aravindc/health-app/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/aravindc/health-app/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/aravindc/health-app/releases/tag/v1.0.0
