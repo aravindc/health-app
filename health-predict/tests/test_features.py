@@ -182,3 +182,27 @@ def test_day_of_year_is_not_a_model_feature_group(settings):
     groups = dict(zip(cat["feature"], cat["group"]))
     assert groups["day_of_year"] == groups["sin_day_of_year"] == "calendar"
     assert groups["hour"] == "time"
+
+
+# ------------------------------------------- prediction times off the 5-min grid
+
+def _at_unaligned(settings, t, boluses, segments):
+    """Features at a single time T, as serving builds them (start=T, end=T+1min, as_of=T)."""
+    cgm = synth.regular_cgm(-300, 600, lambda m: 7.0)
+    f, _ = F.build_features(cgm, boluses, segments, settings, t, t + MIN, as_of=t)
+    return f.iloc[0]
+
+
+@pytest.mark.parametrize("offset_s", [0, 1, 60.057, 150, 299])
+def test_insulin_known_and_windows_at_any_time(settings, offset_s):
+    # Complete basal at 1.2 U/h (the last rate still open at T, as in a live request) and one bolus
+    # completing 14 min before T: the same answer whether or not T is on the 5-minute grid.
+    t = at(400) + pd.Timedelta(seconds=offset_s)
+    basal = synth.segments([(m, 1.2) for m in range(-60, 400, 30)])
+    done = t - 14 * MIN
+    b = synth.boluses([{"at": (done - T0) / MIN - 2, "units": 3.0}])  # completes 2 min after its request
+    row = _at_unaligned(settings, t, b, basal)
+    assert row["insulin_known"]
+    assert row["insulin_last_15m"] == pytest.approx(3.0 + 1.2 * 15 / 60)
+    assert row["bolus_insulin_last_30m"] == pytest.approx(3.0)
+    assert row["basal_insulin_last_60m"] == pytest.approx(1.2)

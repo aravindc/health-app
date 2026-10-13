@@ -330,13 +330,23 @@ def bin_to_slots(stream: pd.DataFrame, value_col: str, slots: pd.DatetimeIndex, 
 
     A delivery in [b, b+step) is counted in the slot ending at b+step, so it is
     always complete by the slot time.
+
+    spread_to_bins cuts bins on the clock's 5-minute marks, so times are shifted
+    by the slots' offset from those marks first: then bin edges fall on slot
+    edges for any slot time. Without it, a prediction time off the grid (as live
+    CGM times are) got bins straddling its slots, a partly filled last bin
+    (insulin_known false) and windows short by up to a slot. Grid-aligned slots,
+    as in training, have offset 0 and bin exactly as before.
     """
     out = np.zeros(len(slots))
     d = stream[stream[value_col] > 0]
     if d.empty:
         return out
+    step = pd.Timedelta(minutes=step_min)
+    offset = (slots[0] - pd.Timestamp(0, tz="UTC")) % step
+    d = d.assign(start_at=d["start_at"] - offset, end_at=d["end_at"] - offset)
     b = pp.spread_to_bins(d, "start_at", "end_at", value_col, f"{step_min}min")
-    idx = ((b["bin_start"] - slots[0]) / pd.Timedelta(minutes=step_min)).astype(int).to_numpy() + 1
+    idx = ((b["bin_start"] + offset - slots[0]) / step).round().astype(int).to_numpy() + 1
     ok = (idx >= 0) & (idx < len(slots))
     np.add.at(out, idx[ok], b[value_col].to_numpy()[ok])
     return out
