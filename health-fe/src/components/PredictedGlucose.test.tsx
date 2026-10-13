@@ -67,10 +67,8 @@ describe("PredictedGlucose", () => {
     );
   });
 
-  it("is hidden without a forecast, or when its reading is stale", () => {
+  it("is hidden without a forecast", () => {
     render(null);
-    expect(block()).toBeNull();
-    render(forecast(20));
     expect(block()).toBeNull();
   });
 });

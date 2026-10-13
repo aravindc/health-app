@@ -8,10 +8,6 @@ import {
 import { colorForCgmRange } from "../chart/cgmColors";
 import type { Forecast } from "../chart/forecast";
 
-// A prediction from a reading this old would be from stale data: hide it
-// (the same limit as the dial's stale warning and health-api's).
-const STALE_MINUTES = 15;
-
 interface Props {
   // Predicted glucose (research model), or null when there's none.
   forecast: Forecast | null;
@@ -19,11 +15,12 @@ interface Props {
 
 /** The header's "Predicted" block: the 15- and 30-minute predictions,
  * coloured by range like the dial, with their 80% ranges and the research
- * disclaimer on hover. */
+ * disclaimer on hover. There's no forecast for a stale reading: health-api
+ * answers "not available" once the latest reading is 15 minutes old, and
+ * the dashboard refetches the prediction at least every 5 minutes. */
 export default function PredictedGlucose({ forecast }: Props) {
   if (!forecast) return null;
-  const [reading, ...ahead] = forecast.points;
-  if ((Date.now() - reading.time) / 60_000 >= STALE_MINUTES) return null;
+  const ahead = forecast.points.slice(1);
 
   return (
     <div
