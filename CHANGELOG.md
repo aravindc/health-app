@@ -37,6 +37,20 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **health-predict: glucose prediction (research).** The t1danalysis
+  project moves into the repo as `health-predict/`: the ML pipeline that
+  trains models on this CGM and pump data, and a prediction API that runs
+  as the `health-predict` service (compose profile `predict`, internal
+  network only). Trained models and data stay out of git. The pipeline
+  reads `health-db` with the shared `POSTGRES_*` settings by default, or,
+  with `PREDICT_DB=replica`, a copy of the server's database kept by
+  `dbsync` in the optional `health-predict-replica` service.
+- **Predicted glucose on the dashboard.** With `PREDICT_URL` set,
+  health-api serves `GET /prediction`: predicted glucose 15–60 minutes
+  after the latest reading, with 80% and 95% ranges. The dashboard shows
+  the next 30 minutes as a dashed forecast on the Sensor glucose chart and
+  the 30-minute value next to the current reading, with the model's notes
+  and its research-only disclaimer.
 - **health-api: `MAX_HISTORY_DAYS` setting** to extend the history window
   beyond 90 days, e.g. `MAX_HISTORY_DAYS=365`. Values below 90 are
   rejected at startup.

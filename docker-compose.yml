@@ -123,6 +123,45 @@ services:
         # picks up its new address.
         condition: service_healthy
         restart: true
+  # Glucose prediction API (research use only, not a medical device). Only
+  # on health_be, with no published port: health-api calls it at
+  # http://health-predict:8000 (PREDICT_URL in health-api/.env). It serves
+  # the trained models in health-predict/models (not in git; see
+  # health-predict/README.md), mounted read-only. Behind the `predict`
+  # profile so a checkout without models doesn't start it: run with
+  # `docker compose --profile predict up -d`, or set COMPOSE_PROFILES=predict
+  # in the root .env.
+  health-predict:
+    container_name: health-predict
+    profiles: [predict]
+    networks:
+      - health_be
+    build:
+      context: ./health-predict
+      dockerfile: docker/Dockerfile
+    volumes:
+      - "./health-predict/models:/app/models:ro,Z"
+    restart: on-failure
+  # Optional local copy of another health-db (e.g. the server's, which has
+  # the full pump history), for training health-predict on this machine:
+  # dbsync (health-predict/dbsync) keeps it current, and the pipeline reads
+  # it with PREDICT_DB=replica. Not needed where health-db itself has the
+  # history. Its own credentials are in health-predict/replica.env (see
+  # replica.env.example); the pipeline and dbsync reach it on the host at
+  # 127.0.0.1:9086.
+  health-predict-replica:
+    container_name: health-predict-replica
+    profiles: [predict-replica]
+    image: docker.io/library/postgres:18
+    networks:
+      - health_predict
+    restart: on-failure
+    ports:
+      - "127.0.0.1:9086:5432"
+    env_file:
+      - ./health-predict/replica.env
+    volumes:
+      - "./health-predict/replica-db/data:/var/lib/postgresql:Z"
   bytebase:
     container_name: bytebase
     image: docker.io/bytebase/bytebase:3.23.0
@@ -150,3 +189,9 @@ networks:
     ipam:
       config:
         - subnet: 10.89.3.0/24
+  health_predict:
+    name: health_predict
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.4.0/24

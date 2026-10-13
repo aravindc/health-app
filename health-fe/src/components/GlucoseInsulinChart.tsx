@@ -14,6 +14,7 @@ import {
   DEFAULT_MAX_MMOL,
 } from "../chart/scale";
 import { colorForCgmRange } from "../chart/cgmColors";
+import { FORECAST_MINUTES, forecastAt, type Forecast } from "../chart/forecast";
 
 interface Props {
   minMmol?: number;
@@ -24,6 +25,10 @@ interface Props {
   // the current window, and while following the latest data (the default)
   // the window ends at this time, so new readings appear.
   refreshedAt: number;
+  // Predicted glucose after the latest reading (research model), or null.
+  // While following the latest data, the window then reaches
+  // FORECAST_MINUTES past now so the forecast has room.
+  forecast?: Forecast | null;
 }
 
 // How close to "now" a committed window must end to count as following
@@ -43,6 +48,7 @@ const COLOR_CORRECTION = "#009e73"; // bluish green
 const COLOR_BASAL = "#999999"; // muted gray
 const COLOR_LOW = "#d55e00"; // vermillion (out-of-range shading, low)
 const COLOR_HIGH = "#e69f00"; // orange (out-of-range shading, high) — same as COLOR_FOOD, doesn't co-occur
+const COLOR_FORECAST = "#56b4e9"; // sky blue: predicted glucose, unlike any measured series
 
 const PANEL_HEIGHT_CGM = 220;
 const PANEL_HEIGHT_BASAL = 130;
@@ -105,6 +111,31 @@ function areaPath(points: { x: number; y: number }[], baselineY: number): string
   }
   d += ` L ${points[points.length - 1].x} ${baselineY} Z`;
   return d;
+}
+
+/** The forecast's research disclaimer and the model's notes about its inputs. */
+function ForecastNote({ forecast }: { forecast: Forecast }) {
+  const n = forecast.warnings.length;
+  return (
+    <div className="chart-forecast-note">
+      <p>
+        <strong>Predicted glucose</strong> (dashed, with its 80% and 95% ranges shaded) comes from a
+        research model. {forecast.disclaimer}
+      </p>
+      {n > 0 && (
+        <details>
+          <summary>
+            ⚠ {n} {n === 1 ? "note" : "notes"} on this prediction
+          </summary>
+          <ul>
+            {forecast.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
 }
 
 /** A legend chip: a small colored swatch (dot or square) plus a label. */
@@ -233,6 +264,7 @@ export default function GlucoseInsulinChart({
   strictMaxMmol = DEFAULT_STRICT_MAX_MMOL,
   maxMmol = DEFAULT_MAX_MMOL,
   refreshedAt,
+  forecast = null,
 }: Props) {
   // windowStart is a continuous epoch-ms timestamp (not a whole-day
   // index): dragging any panel slides it by an arbitrary amount, so the
@@ -245,7 +277,9 @@ export default function GlucoseInsulinChart({
   // jumping away from now pins it at pinnedStart until the user returns.
   const [followLatest, setFollowLatest] = useState(true);
   const [pinnedStart, setPinnedStart] = useState(() => Date.now() - WINDOW_MS);
-  const windowStart = followLatest ? refreshedAt - WINDOW_MS : pinnedStart;
+  // With a forecast, the latest window ends FORECAST_MINUTES in the future.
+  const lookaheadMs = forecast ? FORECAST_MINUTES * 60_000 : 0;
+  const windowStart = followLatest ? refreshedAt - WINDOW_MS + lookaheadMs : pinnedStart;
   const [earliestStart, setEarliestStart] = useState<number | null>(null);
   const [cgmData, setCgmData] = useState<DataPoint[]>([]);
   const [doses, setDoses] = useState<BolusDose[]>([]);
@@ -297,11 +331,14 @@ export default function GlucoseInsulinChart({
   const [isDragging, setIsDragging] = useState(false);
 
   // The latest a window is allowed to start: right now minus the window
-  // length, i.e. windowEnd == now (never a window that reaches into the
-  // future). A stable, single definition — atLatest below compares
-  // against this same value, not a freshly-recomputed one, so the two
-  // never drift apart.
-  const latestWindowStart = useCallback(() => Date.now() - WINDOW_MS, []);
+  // length, i.e. windowEnd == now (plus the forecast's lookahead, the only
+  // future the chart shows). A stable, single definition — atLatest below
+  // compares against this same value, not a freshly-recomputed one, so the
+  // two never drift apart.
+  const latestWindowStart = useCallback(
+    () => Date.now() - WINDOW_MS + lookaheadMs,
+    [lookaheadMs]
+  );
 
   const clampWindowStart = useCallback(
     (start: number) => {
@@ -501,6 +538,23 @@ export default function GlucoseInsulinChart({
     [doses, displayWindowStart, pxPerHr]
   );
 
+  // Forecast: a dashed line through the predicted values, over shaded 95%
+  // and 80% intervals that start from zero width at the reading.
+  const forecastGeom = useMemo(() => {
+    if (!forecast) return null;
+    const x = (t: number) => xForTime(t, displayWindowStart, pxPerHr);
+    const y = (v: number) => yScale(v, cgmDomainMin, cgmDomainMax, cgmInnerHeight);
+    const pts = forecast.points;
+    const band = (lo: (p: (typeof pts)[number]) => number, hi: (p: (typeof pts)[number]) => number) =>
+      [...pts.map((p) => `${x(p.time)},${y(hi(p))}`), ...[...pts].reverse().map((p) => `${x(p.time)},${y(lo(p))}`)].join(" ");
+    return {
+      band95: band((p) => p.lower95, (p) => p.upper95),
+      band80: band((p) => p.lower, (p) => p.upper),
+      line: pts.map((p) => `${x(p.time)},${y(p.value)}`).join(" "),
+      dots: pts.slice(1).map((p) => ({ x: x(p.time), y: y(p.value), minutes: p.minutes })),
+    };
+  }, [forecast, displayWindowStart, pxPerHr, cgmInnerHeight]);
+
   // --- Basal panel geometry ---
   const basalInnerHeight = PANEL_HEIGHT_BASAL - MARGIN.top - MARGIN.bottom;
   const maxBasalRate = Math.max(0.1, ...basalPoints.map((p) => p.commanded_rate));
@@ -512,7 +566,11 @@ export default function GlucoseInsulinChart({
       })),
     [basalPoints, displayWindowStart, pxPerHr, maxBasalRate, basalInnerHeight]
   );
-  const basalEndTime = basalWindowEnd !== null ? basalWindowEnd : displayWindowEnd;
+  // Basal is drawn up to now at most, not on into the forecast.
+  const basalEndTime = Math.min(
+    basalWindowEnd !== null ? basalWindowEnd : displayWindowEnd,
+    refreshedAt
+  );
 
   // --- Bolus activity panel geometry ---
   const activityInnerHeight = PANEL_HEIGHT_ACTIVITY - MARGIN.top - MARGIN.bottom;
@@ -546,9 +604,15 @@ export default function GlucoseInsulinChart({
   // the hovered timestamp. Kept as a single overlay (rather than one
   // tooltip per panel) so it never reserves layout space in any panel and
   // can't push the panels below it around. Suppressed while dragging. ---
-  const hoverCgm = hoverTime !== null ? nearest(sortedCgmData, hoverTime, (d) => d.epoch) : null;
+  // Over the forecast, the tooltip shows the prediction instead of the
+  // (older) nearest reading and basal rate.
+  const hoverForecast = forecast && hoverTime !== null ? forecastAt(forecast, hoverTime) : null;
+  const hoverCgm =
+    hoverTime !== null && !hoverForecast
+      ? nearest(sortedCgmData, hoverTime, (d) => d.epoch)
+      : null;
   const hoverBasal =
-    hoverTime !== null
+    hoverTime !== null && hoverTime <= basalEndTime
       ? [...basalPoints].reverse().find((p) => parseTime(p.time) <= hoverTime!)
       : null;
   const hoverFood =
@@ -600,6 +664,10 @@ export default function GlucoseInsulinChart({
       <ChartPanel
         title="Sensor glucose"
         subtitle="mmol/L"
+        legend={
+          forecast && <LegendItem color={COLOR_FORECAST} label="Predicted (research model)" shape="square" />
+        }
+        footer={forecast && <ForecastNote forecast={forecast} />}
         onMouseDown={beginDrag}
         onMouseMove={handlePointerMove}
         onMouseUp={handlePointerUp}
@@ -696,6 +764,24 @@ export default function GlucoseInsulinChart({
               fill={p.color}
             />
           ))}
+
+          {/* predicted glucose: 95% and 80% bands, then the dashed line */}
+          {forecastGeom && (
+            <g className="chart-forecast" pointerEvents="none">
+              <polygon points={forecastGeom.band95} fill={COLOR_FORECAST} opacity={0.12} />
+              <polygon points={forecastGeom.band80} fill={COLOR_FORECAST} opacity={0.25} />
+              <polyline
+                points={forecastGeom.line}
+                fill="none"
+                stroke={COLOR_FORECAST}
+                strokeWidth={2}
+                strokeDasharray="5 4"
+              />
+              {forecastGeom.dots.map((d) => (
+                <circle key={`forecast-${d.minutes}`} cx={d.x} cy={d.y} r={3} fill={COLOR_FORECAST} />
+              ))}
+            </g>
+          )}
 
           {/* dose dots along the top of the panel */}
           {doseMarkers.map(({ x, dose }) => (
@@ -967,7 +1053,7 @@ export default function GlucoseInsulinChart({
       {!isDragging &&
         hoverTime !== null &&
         pointerPos &&
-        (hoverCgm || hoverBasal || hoverFood || hoverCorrection || hoverDose) && (
+        (hoverCgm || hoverForecast || hoverBasal || hoverFood || hoverCorrection || hoverDose) && (
           <div
             className="chart-combined-tooltip"
             style={{
@@ -993,6 +1079,25 @@ export default function GlucoseInsulinChart({
                     </td>
                     <td className="chart-combined-tooltip__value">{hoverCgm.mmol.toFixed(1)} mmol/L</td>
                   </tr>
+                )}
+                {hoverForecast && (
+                  <>
+                    <tr>
+                      <td>
+                        <span className="chart-legend__swatch" style={{ background: COLOR_FORECAST }} />
+                        Predicted, +{hoverForecast.minutes} min
+                      </td>
+                      <td className="chart-combined-tooltip__value">
+                        {hoverForecast.value.toFixed(1)} mmol/L
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>80% range</td>
+                      <td className="chart-combined-tooltip__value">
+                        {hoverForecast.lower.toFixed(1)}–{hoverForecast.upper.toFixed(1)}
+                      </td>
+                    </tr>
+                  </>
                 )}
                 {hoverBasal && (
                   <tr>

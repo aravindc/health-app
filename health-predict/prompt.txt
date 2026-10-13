@@ -1,0 +1,1314 @@
+# Build a Type 1 Diabetes Glucose Prediction System
+
+## Objective
+
+Build a research-grade machine-learning system that predicts future glucose levels for a person with Type 1 Diabetes using approximately **365 days of historical CGM and insulin data**.
+
+The initial objective is **glucose prediction only**.
+
+Do **NOT** make insulin dosing recommendations, treatment recommendations, or automated therapy decisions.
+
+The system should predict glucose at multiple future horizons:
+
+* 15 minutes
+* 30 minutes
+* 45 minutes
+* 60 minutes
+
+The architecture should allow additional horizons to be added later.
+
+The system must be designed so that the model can be rigorously evaluated using historical data and avoid data leakage.
+
+---
+
+# 1. Technology Stack
+
+Use:
+
+* Python 3.12+
+* pandas
+* NumPy
+* scikit-learn
+* XGBoost and/or LightGBM
+* PyTorch for deep-learning experiments
+* DuckDB for local analytical storage
+* matplotlib
+* seaborn
+* SHAP for model explainability where appropriate
+* Jupyter notebooks for exploratory analysis
+
+Use `uv` or a Python virtual environment for dependency management.
+
+The project must run locally without requiring cloud services.
+
+Provide:
+
+* `pyproject.toml`
+* `.env.example`
+* `README.md`
+* Dockerfile
+* Docker Compose configuration if useful
+* Makefile or equivalent development commands
+
+---
+
+# 2. Input Data
+
+The system will receive historical diabetes data covering approximately 365 days.
+
+At minimum we expect:
+
+### CGM
+
+Typical fields:
+
+```text
+timestamp
+glucose
+```
+
+Glucose is expected to be in:
+
+```text
+mmol/L
+```
+
+The system must support configurable CGM sampling intervals, particularly:
+
+* 5 minutes
+* 10 minutes
+* 15 minutes
+
+Do not assume the data is perfectly regular.
+
+### Insulin
+
+Insulin data may contain:
+
+```text
+timestamp
+insulin_units
+insulin_type
+delivery_type
+```
+
+Possible delivery types include:
+
+* basal
+* bolus
+* correction
+* automated basal adjustment
+
+If the source data has different terminology, create a configurable mapping layer rather than hard-coding assumptions.
+
+### Optional future inputs
+
+Design the architecture so that the following can be incorporated later:
+
+* carbohydrate intake
+* meals
+* exercise
+* sleep
+* illness
+* stress
+* heart rate
+* activity
+* insulin sensitivity
+* insulin-to-carb ratio
+* basal profile
+* insulin-on-board
+* meal annotations
+
+Do not require these fields for the first version.
+
+---
+
+# 3. Data Ingestion
+
+Create a clean ingestion pipeline.
+
+Example:
+
+```text
+data/raw/
+data/processed/
+data/features/
+models/
+notebooks/
+src/
+tests/
+reports/
+```
+
+The ingestion pipeline should:
+
+1. Load raw CGM data.
+2. Load raw insulin data.
+3. Parse timestamps.
+4. Normalize all timestamps to one timezone.
+5. Sort chronologically.
+6. Detect duplicate records.
+7. Detect missing data.
+8. Detect impossible values.
+9. Detect suspicious values/outliers.
+10. Resample data onto a common time grid.
+11. Preserve the original raw data.
+12. Store cleaned data in DuckDB.
+
+Do not silently discard data.
+
+Generate a data-quality report.
+
+---
+
+# 4. Data Quality Analysis
+
+Before training any model, produce a comprehensive report covering:
+
+### CGM
+
+* number of readings
+* date range
+* sampling interval
+* missing readings
+* duplicated readings
+* minimum glucose
+* maximum glucose
+* mean glucose
+* median glucose
+* standard deviation
+* coefficient of variation
+* time below range
+* time in range
+* time above range
+
+Use configurable thresholds but initially use:
+
+```text
+Very low: < 3.0 mmol/L
+Low:      < 3.9 mmol/L
+Target:   3.9–10.0 mmol/L
+High:     > 10.0 mmol/L
+Very high > 13.9 mmol/L
+```
+
+These thresholds should be configuration values, not hard-coded throughout the application.
+
+### Insulin
+
+Report:
+
+* total insulin
+* basal insulin
+* bolus insulin
+* daily insulin
+* average daily insulin
+* insulin distribution by hour
+* insulin distribution by day
+* insulin distribution by weekday
+* missing insulin records
+* suspicious insulin values
+
+Generate plots showing CGM and insulin over time.
+
+---
+
+# 5. Important Data Leakage Requirement
+
+This is critical.
+
+The model must NEVER use information that would not have been available at prediction time.
+
+For example, when predicting glucose 30 minutes into the future:
+
+```text
+prediction_time = T
+target = glucose at T + 30 minutes
+```
+
+Features may only use information available at or before `T`.
+
+Do NOT use:
+
+* future glucose values
+* future insulin
+* future carbohydrate information
+* future-derived rolling statistics
+* centered rolling windows
+* future interpolation
+* future normalization information
+
+Be especially careful with preprocessing and feature engineering.
+
+Document all leakage-prevention decisions.
+
+---
+
+# 6. Prediction Targets
+
+Create separate targets for:
+
+```text
+glucose_15m
+glucose_30m
+glucose_45m
+glucose_60m
+```
+
+For example:
+
+```text
+timestamp        current_glucose    glucose_15m    glucose_30m
+10:00            7.2                7.8            8.6
+10:05            7.4                8.1            9.0
+```
+
+Also create delta targets:
+
+```text
+delta_15m
+delta_30m
+delta_45m
+delta_60m
+```
+
+where:
+
+```text
+delta_30m =
+future_glucose_30m - current_glucose
+```
+
+Evaluate both approaches:
+
+1. Direct glucose prediction
+2. Glucose-delta prediction
+
+Determine empirically which performs better.
+
+---
+
+# 7. Feature Engineering
+
+Build features from information available up to the prediction timestamp.
+
+## A. Current glucose
+
+Include:
+
+```text
+current_glucose
+```
+
+## B. Glucose history
+
+Create lag features for approximately:
+
+```text
+5m
+10m
+15m
+20m
+30m
+45m
+60m
+90m
+120m
+180m
+```
+
+For example:
+
+```text
+glucose_lag_5m
+glucose_lag_10m
+glucose_lag_15m
+...
+```
+
+## C. Glucose velocity
+
+Calculate:
+
+```text
+glucose_change_5m
+glucose_change_10m
+glucose_change_15m
+glucose_change_30m
+```
+
+Also calculate rates:
+
+```text
+mg/dL/min equivalent
+mmol/L/hour
+```
+
+Use mmol/L as the primary internal unit.
+
+## D. Acceleration
+
+Calculate:
+
+```text
+velocity_5m
+velocity_10m
+velocity_15m
+acceleration
+```
+
+This is important because a glucose value of 8 mmol/L can have very different future trajectories depending on whether glucose is:
+
+```text
+8 → 7.5 → 7.0
+```
+
+or
+
+```text
+8 → 8.5 → 9.0
+```
+
+## E. Rolling statistics
+
+Calculate trailing:
+
+```text
+mean
+median
+std
+min
+max
+range
+slope
+```
+
+over:
+
+```text
+15m
+30m
+60m
+120m
+180m
+```
+
+Only use trailing windows.
+
+## F. Time-of-day
+
+Create:
+
+```text
+hour
+minute
+day_of_week
+day_of_year
+is_weekend
+```
+
+Use cyclical encoding:
+
+```text
+sin_hour
+cos_hour
+sin_day_of_week
+cos_day_of_week
+```
+
+## G. Insulin features
+
+Create insulin features over trailing windows:
+
+```text
+insulin_last_15m
+insulin_last_30m
+insulin_last_60m
+insulin_last_90m
+insulin_last_120m
+insulin_last_180m
+insulin_last_240m
+```
+
+Also:
+
+```text
+basal_insulin_last_30m
+basal_insulin_last_60m
+bolus_insulin_last_30m
+bolus_insulin_last_60m
+bolus_insulin_last_120m
+```
+
+Create time-since-last-bolus:
+
+```text
+minutes_since_last_bolus
+```
+
+and:
+
+```text
+last_bolus_amount
+```
+
+If insulin delivery is granular enough, calculate an estimated insulin-on-board feature.
+
+Clearly document the assumptions used.
+
+---
+
+# 8. Insulin-On-Board
+
+Implement a configurable IOB model.
+
+Initially support an exponential or Walsh-style approximation.
+
+Parameters should include:
+
+```text
+insulin_duration_hours
+```
+
+Make this configurable.
+
+Do NOT claim that the calculated IOB represents medically accurate physiological insulin activity.
+
+Label it clearly as:
+
+```text
+estimated_iob
+```
+
+The model should be able to run with and without IOB so that its predictive value can be evaluated.
+
+---
+
+# 9. Baseline Models
+
+Before using complex ML, implement baseline predictors.
+
+### Baseline 1 — Persistence
+
+Predict:
+
+```text
+future glucose = current glucose
+```
+
+### Baseline 2 — Linear trend
+
+Use recent glucose trend to extrapolate.
+
+### Baseline 3 — Linear regression
+
+Use engineered features.
+
+### Baseline 4 — Random Forest
+
+### Baseline 5 — Gradient boosting
+
+Use:
+
+* XGBoost
+* LightGBM
+
+Compare all models.
+
+A complex model should only be adopted if it materially improves prediction accuracy.
+
+---
+
+# 10. Deep Learning Models
+
+After the baseline models work, implement at least one sequence model.
+
+Evaluate:
+
+### LSTM
+
+Input:
+
+```text
+previous 60–120 minutes
+```
+
+with approximately:
+
+```text
+glucose
+glucose velocity
+insulin
+estimated IOB
+time features
+```
+
+Predict:
+
+```text
+15m
+30m
+45m
+60m
+```
+
+Also consider:
+
+### Temporal Convolutional Network
+
+and/or
+
+### Transformer
+
+However, do not add complexity unless it produces measurable improvement.
+
+The system should make it easy to compare:
+
+```text
+Persistence
+Linear regression
+XGBoost
+LightGBM
+LSTM
+TCN/Transformer
+```
+
+---
+
+# 11. Train/Validation/Test Strategy
+
+DO NOT randomly split the time-series data.
+
+Use chronological splitting.
+
+For example:
+
+```text
+First 70%  = training
+Next 15%   = validation
+Last 15%   = test
+```
+
+Better yet, implement rolling-origin evaluation.
+
+Example:
+
+```text
+Train: months 1–6
+Validate: month 7
+
+Train: months 1–7
+Validate: month 8
+
+Train: months 1–8
+Validate: month 9
+```
+
+The final test set must remain untouched until model selection is complete.
+
+Avoid leakage caused by overlapping windows across train/test boundaries.
+
+Document the exact split strategy.
+
+---
+
+# 12. Evaluation Metrics
+
+For every prediction horizon calculate:
+
+### Regression
+
+* MAE
+* RMSE
+* MAPE where appropriate
+* Median Absolute Error
+* R²
+
+For example:
+
+```text
+15m MAE
+30m MAE
+45m MAE
+60m MAE
+```
+
+Also evaluate:
+
+```text
+mean error
+bias
+95th percentile absolute error
+```
+
+Do not rely solely on RMSE.
+
+---
+
+# 13. Clinically Relevant Prediction Analysis
+
+Even though this is a research model and NOT a dosing system, analyse clinically relevant prediction behaviour.
+
+Evaluate:
+
+### Hypoglycaemia prediction
+
+For future glucose:
+
+```text
+< 3.9 mmol/L
+```
+
+Measure:
+
+* sensitivity
+* specificity
+* precision
+* recall
+* F1
+* false-negative rate
+
+Especially analyse:
+
+```text
+Will the model correctly identify a glucose level becoming low within 30 minutes?
+```
+
+### Hyperglycaemia
+
+Similarly evaluate:
+
+```text
+> 10 mmol/L
+> 13.9 mmol/L
+```
+
+---
+
+# 14. Prediction Intervals
+
+Do not only produce point predictions.
+
+Where possible, produce:
+
+```text
+prediction
+lower_bound
+upper_bound
+confidence_level
+```
+
+For example:
+
+```text
+30-minute prediction:
+
+Predicted: 8.4 mmol/L
+80% interval: 7.6–9.3
+95% interval: 7.1–9.8
+```
+
+Investigate:
+
+* quantile regression
+* conformal prediction
+* probabilistic neural networks
+
+Prefer a method that provides empirically calibrated prediction intervals.
+
+Evaluate calibration.
+
+---
+
+# 15. Model Explainability
+
+For tree-based models use SHAP.
+
+Identify the most important features for predictions.
+
+For example:
+
+```text
+current glucose
+15-minute glucose slope
+30-minute glucose slope
+insulin last 60m
+estimated IOB
+time of day
+```
+
+Produce:
+
+* global feature importance
+* SHAP summary
+* individual prediction explanation
+
+Be careful not to interpret feature importance as causal relationships.
+
+---
+
+# 16. Error Analysis
+
+This is extremely important.
+
+Do not simply report an overall MAE.
+
+Break prediction performance down by:
+
+### Glucose range
+
+```text
+<3.9
+3.9–7
+7–10
+10–13.9
+>13.9
+```
+
+### Direction
+
+```text
+rapidly falling
+falling
+stable
+rising
+rapidly rising
+```
+
+### Time of day
+
+```text
+00–06
+06–12
+12–18
+18–24
+```
+
+### Insulin activity
+
+Compare:
+
+```text
+high recent insulin
+low recent insulin
+recent bolus
+no recent bolus
+```
+
+### Day
+
+Analyse performance by day of week.
+
+Identify conditions where the model performs poorly.
+
+---
+
+# 17. Important Special Cases
+
+Create separate analysis for:
+
+### Rapid glucose changes
+
+For example:
+
+```text
+> 0.1 mmol/L/min
+```
+
+and configurable thresholds.
+
+### Post-bolus periods
+
+Analyse:
+
+```text
+0–30 minutes
+30–60 minutes
+60–120 minutes
+120–240 minutes
+```
+
+after a bolus.
+
+### Overnight
+
+Evaluate:
+
+```text
+00:00–06:00
+```
+
+separately.
+
+### Exercise
+
+If exercise data is available, add it later.
+
+### Missing CGM data
+
+Evaluate model robustness when there are missing readings.
+
+---
+
+# 18. Visualization
+
+Create a dashboard/report containing:
+
+### Historical glucose
+
+Plot:
+
+```text
+CGM glucose
+insulin delivery
+```
+
+on aligned timelines.
+
+### Prediction examples
+
+Show:
+
+```text
+actual glucose
+predicted glucose
+prediction interval
+```
+
+for representative periods.
+
+Include examples of:
+
+* stable glucose
+* rapid rise
+* rapid fall
+* post-meal/bolus period
+* overnight
+* hypoglycaemia
+* hyperglycaemia
+
+### Model comparison
+
+Create plots comparing:
+
+```text
+MAE by prediction horizon
+RMSE by prediction horizon
+```
+
+for all models.
+
+---
+
+# 19. Prediction API
+
+Create a simple Python API.
+
+For example:
+
+```http
+POST /predict
+```
+
+Input:
+
+```json
+{
+  "timestamp": "2026-10-07T09:00:00Z",
+  "glucose": 7.8,
+  "recent_glucose": [],
+  "recent_insulin": []
+}
+```
+
+Return:
+
+```json
+{
+  "timestamp": "2026-10-07T09:00:00Z",
+  "predictions": {
+    "15m": {
+      "value": 8.1,
+      "lower": 7.5,
+      "upper": 8.8
+    },
+    "30m": {
+      "value": 8.6,
+      "lower": 7.7,
+      "upper": 9.5
+    },
+    "45m": {
+      "value": 9.0,
+      "lower": 7.9,
+      "upper": 10.2
+    },
+    "60m": {
+      "value": 9.3,
+      "lower": 8.0,
+      "upper": 10.7
+    }
+  },
+  "model_version": "..."
+}
+```
+
+---
+
+# 20. Model Training CLI
+
+Create commands such as:
+
+```bash
+python -m src.ingest
+python -m src.validate_data
+python -m src.features
+python -m src.train
+python -m src.evaluate
+python -m src.predict
+```
+
+Allow:
+
+```bash
+python -m src.train --model xgboost
+python -m src.train --model lightgbm
+python -m src.train --model lstm
+```
+
+Allow prediction horizon selection:
+
+```bash
+--horizon 15
+--horizon 30
+--horizon 45
+--horizon 60
+```
+
+---
+
+# 21. Experiment Tracking
+
+Create an experiment table in DuckDB.
+
+Record:
+
+```text
+experiment_id
+model
+model_version
+training_start
+training_end
+validation_start
+validation_end
+features
+hyperparameters
+MAE
+RMSE
+R2
+hypoglycaemia_recall
+hypoglycaemia_precision
+prediction_interval_coverage
+created_at
+```
+
+This should allow experiments to be compared later.
+
+---
+
+# 22. Model Registry
+
+Store models using a structure such as:
+
+```text
+models/
+    xgboost/
+        15m/
+        30m/
+        45m/
+        60m/
+
+    lightgbm/
+        ...
+
+    lstm/
+        ...
+```
+
+Store metadata alongside each model.
+
+Example:
+
+```json
+{
+  "model": "xgboost",
+  "horizon": 30,
+  "features": [],
+  "training_period": {},
+  "metrics": {},
+  "created_at": "",
+  "git_commit": ""
+}
+```
+
+---
+
+# 23. Reproducibility
+
+Every experiment must record:
+
+* random seed
+* feature version
+* model parameters
+* training data period
+* validation period
+* test period
+* software versions
+* git commit
+
+The same experiment should be reproducible.
+
+---
+
+# 24. Model Selection
+
+Create an automated model comparison report.
+
+Example:
+
+| Model       | 15m MAE | 30m MAE | 45m MAE | 60m MAE |
+| ----------- | ------: | ------: | ------: | ------: |
+| Persistence |         |         |         |         |
+| Linear      |         |         |         |         |
+| XGBoost     |         |         |         |         |
+| LightGBM    |         |         |         |         |
+| LSTM        |         |         |         |         |
+
+Select the best model separately for each horizon if appropriate.
+
+Do NOT assume one model is optimal for all horizons.
+
+---
+
+# 25. Personalised Model
+
+Because the dataset represents one individual, investigate whether a personalised model performs better than a generic model.
+
+The primary model should be trained specifically on the person's historical data.
+
+However, structure the code so that additional people's data could be incorporated later.
+
+Avoid assuming that a model trained on one person will generalise to another person.
+
+---
+
+# 26. Continuous Retraining
+
+Design the system so that new CGM/insulin data can periodically be added.
+
+Support:
+
+```text
+initial training
+incremental dataset update
+retraining
+model comparison
+model promotion
+```
+
+Do not automatically replace a production model merely because a newer model has been trained.
+
+Require evaluation against the fixed holdout test set.
+
+---
+
+# 27. Safety Requirements
+
+This is a research and prediction system.
+
+The application must prominently state:
+
+> This system predicts glucose values for research and analysis. It is not a medical device and must not be used to determine insulin doses or make treatment decisions.
+
+Do not implement:
+
+* insulin dosing recommendations
+* automated correction recommendations
+* basal adjustment recommendations
+* carbohydrate recommendations
+* medical diagnosis
+
+Do not claim that predictions are medically accurate.
+
+---
+
+# 28. Expected Deliverables
+
+Build the complete repository.
+
+Include:
+
+```text
+README.md
+
+src/
+    ingest.py
+    validation.py
+    preprocessing.py
+    features.py
+    targets.py
+    baselines.py
+    train.py
+    evaluate.py
+    predict.py
+    explain.py
+    api.py
+
+models/
+
+notebooks/
+    01_data_exploration.ipynb
+    02_feature_analysis.ipynb
+    03_baseline_models.ipynb
+    04_model_comparison.ipynb
+    05_error_analysis.ipynb
+
+tests/
+
+reports/
+
+data/
+    raw/
+    processed/
+    features/
+
+docker/
+```
+
+---
+
+# 29. Development Process
+
+Do not try to build everything at once.
+
+Implement in phases.
+
+## Phase 1
+
+Build:
+
+* data ingestion
+* DuckDB schema
+* CGM validation
+* insulin validation
+* visualisation
+* data-quality report
+
+Then stop and provide a summary.
+
+## Phase 2
+
+Build:
+
+* resampling
+* target generation
+* leakage-safe feature engineering
+* train/validation/test splitting
+
+Add tests for every transformation.
+
+## Phase 3
+
+Implement:
+
+* persistence baseline
+* linear trend
+* linear regression
+* XGBoost
+* LightGBM
+
+Generate model comparison report.
+
+## Phase 4
+
+Implement:
+
+* LSTM
+* sequence preparation
+* multi-horizon prediction
+
+Compare against the tree-based models.
+
+## Phase 5
+
+Implement:
+
+* prediction intervals
+* SHAP
+* detailed error analysis
+* hypoglycaemia/hyperglycaemia classification analysis
+
+## Phase 6
+
+Implement:
+
+* prediction API
+* model registry
+* experiment tracking
+* Docker
+* documentation
+
+---
+
+# 30. Critical Design Principle
+
+Start simple.
+
+The goal is NOT to create the most complicated neural network.
+
+The goal is to determine:
+
+> "Given everything that was known at time T, how accurately can we predict this person's glucose at T+15, T+30, T+45 and T+60 minutes?"
+
+Every model must be compared against a simple persistence baseline.
+
+If XGBoost achieves:
+
+```text
+15m MAE = 0.35 mmol/L
+30m MAE = 0.55 mmol/L
+```
+
+while an LSTM achieves:
+
+```text
+15m MAE = 0.36 mmol/L
+30m MAE = 0.56 mmol/L
+```
+
+prefer XGBoost.
+
+Accuracy, robustness, interpretability and absence of leakage are more important than model complexity.
+
+---
+
+# 31. First Task
+
+Before writing the complete system:
+
+1. Inspect the repository.
+2. Identify the available data files.
+3. Determine the actual CGM schema.
+4. Determine the actual insulin schema.
+5. Determine timestamp formats and timezone.
+6. Determine CGM sampling frequency.
+7. Determine insulin event types.
+8. Report missing data and data quality issues.
+9. Propose the DuckDB schema.
+10. Propose the feature schema.
+11. Propose the train/validation/test methodology.
+
+Do not make assumptions about the data format.
+
+If the actual data schema differs from the assumptions above, adapt the ingestion layer rather than modifying the raw data.
+
+After this analysis, show me the proposed architecture and wait for approval before implementing the full ML pipeline.

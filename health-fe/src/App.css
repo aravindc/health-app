@@ -161,6 +161,27 @@
   color: #666;
 }
 
+/* Predicted glucose in FORECAST_MINUTES (research model): the chart's
+   forecast colour, kept small so it reads as secondary to the reading. */
+.current-reading__forecast {
+  font-size: 0.8rem;
+  color: #aaa;
+  cursor: help;
+}
+
+.current-reading__forecast-label {
+  color: #56b4e9;
+}
+
+.current-reading__forecast-value {
+  font-weight: 600;
+  color: #ddd;
+}
+
+.current-reading__forecast-range {
+  color: #777;
+}
+
 /* No reading for STALE_MINUTES (CurrentReading.tsx): grey out the dial and
    flag the time in the chart's amber (COLOR_CGM_ELEVATED). The dial gets
    one fixed grey rather than a grayscale filter, which would keep each
@@ -325,6 +346,25 @@
 
 .chart-panel__footer strong {
   color: #aaa;
+}
+
+/* Forecast disclaimer and the model's notes, in the CGM panel's footer. */
+.chart-forecast-note p {
+  margin: 0;
+}
+
+.chart-forecast-note details {
+  margin-top: 0.35rem;
+}
+
+.chart-forecast-note summary {
+  cursor: pointer;
+  color: #fab219;
+}
+
+.chart-forecast-note ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
 }
 
 /* ===== Legend ===== */

@@ -271,3 +271,27 @@ func TestLoadConfig_MaxHistoryDaysRejectsInvalidOrShorter(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfig_PredictURL(t *testing.T) {
+	for _, tc := range []struct {
+		in, want string
+		ok       bool
+	}{
+		{"", "", true},
+		{"http://health-predict:8000", "http://health-predict:8000", true},
+		{" https://predict.example.com/ ", "https://predict.example.com", true},
+		{"health-predict:8000", "", false},
+		{"ftp://health-predict", "", false},
+		{"http://", "", false},
+	} {
+		setEnv(t, map[string]string{"PREDICT_URL": tc.in})
+		cfg, err := LoadConfig()
+		if (err == nil) != tc.ok {
+			t.Errorf("PREDICT_URL=%q: err=%v, want ok=%v", tc.in, err, tc.ok)
+			continue
+		}
+		if err == nil && cfg.PredictURL != tc.want {
+			t.Errorf("PREDICT_URL=%q: got %q, want %q", tc.in, cfg.PredictURL, tc.want)
+		}
+	}
+}

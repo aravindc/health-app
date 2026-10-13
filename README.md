@@ -12,6 +12,7 @@ A personal health monitoring dashboard for tracking continuous glucose monitor (
 - 120-day heatmaps for daily averages and TIR percentages
 - Historical gap-fill from a Nightscout MongoDB backend
 - Hourly insulin (bolus + basal) sync from a Tandem Source insulin pump
+- Predicted glucose for the next 30 minutes, from the health-predict research model (optional)
 - Prometheus metrics endpoint for monitoring
 
 ## Architecture
@@ -23,6 +24,7 @@ health-sync/         Go background sync service (Dexcom → PostgreSQL)
 health-mongo-sync/   Go one-shot gap-fill service (MongoDB → PostgreSQL)
 health-db/           PostgreSQL data volume (schema lives in health-api's migrations)
 health-tandem-sync/  Go services (Tandem Source → PostgreSQL insulin + CGM data)
+health-predict/      Python glucose prediction (research): ML pipeline + FastAPI service
 ```
 
 ## Stack
@@ -34,6 +36,7 @@ health-tandem-sync/  Go services (Tandem Source → PostgreSQL insulin + CGM dat
 | Database     | PostgreSQL (partitioned by month)    |
 | Dexcom sync  | Go, Dexcom Share API                 |
 | MongoDB sync | Go, MongoDB driver                   |
+| Prediction   | Python, scikit-learn, FastAPI (research only) |
 | Infra        | Docker/Podman Compose, nginx, Bytebase |
 
 ## Running
@@ -196,6 +199,47 @@ cd health-tandem-sync
 ./run-tandemload.sh -start 2024-01-01  # any tandemload flag works
 ```
 
+### Predicted glucose (health-predict)
+
+The dashboard can show predicted glucose for the 30 minutes after the
+latest reading: a dashed line with shaded 80% and 95% ranges on the Sensor
+glucose chart, and the 30-minute value next to the current reading. The
+predictions come from [`health-predict`](health-predict/README.md), a
+research model trained on this pump and CGM data. **It is not a medical
+device, and its predictions must not be used for insulin doses or treatment
+decisions.** The dashboard shows this disclaimer next to the forecast.
+
+`health-api` builds each request from its own tables, the same way
+health-predict builds its training data: Tandem and Dexcom CGM readings
+from the last 6 hours, basal rate changes and boluses. It calls the
+`health-predict` service once per new reading and caches the answer, at
+`GET /prediction`. The service is on the internal `health_be` network only.
+
+1. Train the models, or copy an existing `models/` folder into
+   `health-predict/models/` (it's not in git: the models are built from
+   personal health data). See [health-predict's README](health-predict/README.md).
+2. Set `PREDICT_URL=http://health-predict:8000` in `health-api/.env`.
+3. Start the service, which is behind the `predict` profile:
+
+   ```bash
+   docker compose --profile predict up -d --build health-predict health-api
+   ```
+
+   Or set `COMPOSE_PROFILES=predict` in the root `.env` so a plain
+   `docker compose up -d` includes it.
+
+Training runs on the host with `make` targets in `health-predict/`. By
+default the pipeline reads `health-db` with the root `.env`'s `POSTGRES_*`
+settings, like every other module; to train on another machine from a copy
+of the server's data, use the optional `health-predict-replica` service
+(profile `predict-replica`) with `PREDICT_DB=replica`. See
+[health-predict's README](health-predict/README.md).
+
+Without `PREDICT_URL`, or when the latest reading is more than 15 minutes
+old, there's no forecast. Pump data arrives through Tandem Source, so it
+often lags the Dexcom readings; when it's more than 30 minutes behind, the
+prediction notes that recent insulin isn't included.
+
 ## Configuration
 
 Config is split across a root `.env` plus one `.env` per service directory,
@@ -216,6 +260,8 @@ sees your Dexcom password.
 | `health-sync/.env` | `health-sync` | `BRIDGE_*`, `APPLICATION_ID`, sync settings |
 | `health-mongo-sync/.env` | `health-mongo-sync` | `MONGO_*` |
 | `health-api/.env` | `health-api` | Glucose ranges, `API_KEYS`, `APP_ENV` (production unless set to `development`) |
+| `health-predict/.env` | health-predict's training pipeline (run on the host) | `PREDICT_DB`, host overrides; replica and `dbsync` settings |
+| `health-predict/replica.env` | `health-predict-replica` (optional) | The replica Postgres's own credentials |
 | `health-tandem-sync/.env` | `health-tandem-sync` | `TANDEM_USERNAME/PASSWORD` only — `POSTGRES_*` comes from the root `.env` (see its own `env_file:` list in `docker-compose.yml`), not duplicated here |
 
 `health-db` itself has no per-service `.env` file — the root `.env` is all
@@ -261,5 +307,6 @@ Prometheus metrics are served separately, at `/metrics` on port `9090` (`METRICS
 | GET    | `/quart/:days`                    | Quartile distribution for past N days    |
 | GET    | `/gmi/:days`                      | Glucose Management Indicator (more than 7 days)|
 | GET    | `/percentinrange/:hours`          | % of readings in strict range            |
+| GET    | `/prediction`                     | Predicted glucose 15–60 min after the latest reading, from health-predict (`{"available": false, "reason": ...}` when there's none) |
 | GET    | `/insightstats/:hours`            | All Insights card stats for the last N hours (% in range, mean, median, SD, CV, quartiles, highs/lows, unicorns, range splits, 288-point sparkline) |
 | GET    | `/timeinrange/:hours`             | Consecutive time in strict range         |

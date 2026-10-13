@@ -1,0 +1,20 @@
+.env
+dbsync/dbsync
+replica.env
+replica-db/
+.venv/
+__pycache__/
+*.duckdb
+*.duckdb.wal
+data/raw/*
+data/processed/*
+data/features/*
+!data/**/.gitkeep
+models/*
+!models/.gitkeep
+.ipynb_checkpoints/
+logs/
+data/predictions/
+# Generated outputs (health-data summaries); rebuild with make.
+reports/*
+!reports/.gitkeep

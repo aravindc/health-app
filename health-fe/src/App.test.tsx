@@ -12,6 +12,7 @@ vi.mock("./api/client", () => ({
     getGmi: vi.fn(),
     getDailyAvg: vi.fn(),
     getDailyTir: vi.fn(),
+    getPrediction: vi.fn(),
   },
 }));
 
@@ -80,6 +81,7 @@ beforeEach(() => {
   mocked.getGmi.mockResolvedValue({ gmi_percent: 6.6 } as never);
   mocked.getDailyAvg.mockResolvedValue([]);
   mocked.getDailyTir.mockResolvedValue([]);
+  mocked.getPrediction.mockResolvedValue({ available: false, reason: "Predictions are not configured" });
 
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -116,6 +118,8 @@ describe("App polling", () => {
     await minutes(1);
     expect(calls().stats).toBe(2);
     expect(chartRefreshes.size).toBe(refreshes + 1);
+    // The prediction is for the latest reading: refetched along with stats.
+    expect(mocked.getPrediction).toHaveBeenCalledTimes(2);
     // The slow data waits for its own 5-minute window.
     expect(calls().slow).toBe(1);
   });

@@ -117,3 +117,29 @@ export interface BasalChart {
   points: BasalPoint[];
   window_end: string;
 }
+
+/** One horizon's predicted glucose (mmol/L) with its 80% (lower/upper) and
+ * 95% intervals. */
+export interface PredictionInterval {
+  value: number;
+  lower: number;
+  upper: number;
+  lower_95: number;
+  upper_95: number;
+  confidence_level: number;
+}
+
+/** GET /prediction: predicted glucose after the latest reading, from the
+ * health-predict research model, or why there is none. */
+export type Prediction =
+  | {
+      available: true;
+      timestamp: string;
+      current_glucose: number;
+      unit: "mmol/L";
+      predictions: Partial<Record<"15m" | "30m" | "45m" | "60m", PredictionInterval>>;
+      model_version: Record<string, string>;
+      warnings: string[];
+      disclaimer: string;
+    }
+  | { available: false; reason: string };

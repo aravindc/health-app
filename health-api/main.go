@@ -157,6 +157,7 @@ func main() {
 		api.GET("/insightstats/:hours", h.GetInsightStats)
 		api.GET("/7dsparkline/:day_num", h.Get7DaySparkline)
 		api.GET("/last24hsparkline", h.GetLast24hSparkline)
+		api.GET("/prediction", h.GetPrediction)
 	}
 
 	// 7. Start server with graceful shutdown

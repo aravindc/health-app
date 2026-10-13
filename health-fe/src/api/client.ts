@@ -11,6 +11,7 @@ import type {
   InsightStats,
   BolusChart,
   BasalChart,
+  Prediction,
 } from "./types";
 
 // Same-origin /api by default: nginx (and the Vite dev server) proxy it to
@@ -45,4 +46,5 @@ export const api = {
     fetchJSON<PercentInRange[]>(`/percentinrange/${hours}`),
   getDailyAvg: (days: number) => fetchJSON<DailyAvg[]>(`/dailyavg/${days}`),
   getDailyTir: (days: number) => fetchJSON<DailyTir[]>(`/dailytir/${days}`),
+  getPrediction: () => fetchJSON<Prediction>("/prediction"),
 };

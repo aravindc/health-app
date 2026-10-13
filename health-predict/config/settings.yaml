@@ -1,0 +1,99 @@
+# Central configuration. Values here are referenced by name throughout the
+# code; nothing below should be hard-coded elsewhere.
+
+project:
+  timezone: Europe/London          # local time for time-of-day analysis and daily totals
+  random_seed: 42
+
+database:
+  # Which Postgres the pipeline reads is PREDICT_DB (see src/db.py): health-app's health-db (default, POSTGRES_*
+  # from health-app's root .env) or a replica kept by dbsync, whose settings are read from health-predict/.env as
+  # <env_prefix>_DB_HOST etc. Override the prefix with T1D_DB_ENV_PREFIX.
+  env_prefix: TARGET
+  duckdb_path: data/processed/t1d.duckdb
+
+modelling_window:
+  # Period with both CGM and insulin data. Days at either end are partial.
+  start: "2025-05-19"
+  end: "2026-10-06"                # inclusive, local dates
+
+units:
+  mgdl_per_mmol: 18.016            # glucose conversion factor
+
+cgm:
+  expected_interval_minutes: 5     # 5, 10 or 15 supported
+  sensor_low_limit_mgdl: 40        # readings flagged LOW are stored at this value, censored='low'
+  sensor_high_limit_mgdl: 400      # readings flagged HIGH are stored at this value, censored='high'
+  impossible_min_mmol: 1.0         # below this (and not a LOW flag) = impossible
+  impossible_max_mmol: 33.3        # above this = impossible
+  suspicious_rate_mmol_per_min: 0.3  # |change| faster than this between consecutive readings = suspicious
+  rate_check_min_interval_minutes: 3 # skip the rate check for readings closer than this
+  gap_minutes: 15                  # a gap longer than this counts as missing data
+  long_gap_minutes: 120
+  backfill_offset_tolerance_seconds: 7200  # nearest live reading must be within this to correct a backfill
+  nightscout_fill_tolerance_seconds: 150   # nightscout fills tandem only if no tandem reading this close
+
+glucose_thresholds_mmol:
+  very_low: 3.0     # < very_low
+  low: 3.9          # < low
+  high: 10.0        # > high
+  very_high: 13.9   # > very_high
+
+insulin:
+  insulin_type: rapid_acting       # all pump insulin is rapid-acting
+  max_basal_gap_hours: 6           # basal segments longer than this have unknown delivery
+  suspicious_bolus_units: 20       # single bolus above this = suspicious
+  suspicious_basal_rate_u_per_h: 5 # basal rate above this = suspicious
+  suspicious_daily_total_units: 100
+  carbs_repeat_window_minutes: 30  # same carb amount re-entered within this (cancel + re-enter) = one meal
+
+features:
+  version: v1
+  max_current_staleness_minutes: 15   # current glucose older than this = no valid sample
+  lags_minutes: [5, 10, 15, 20, 30, 45, 60, 90, 120, 180]
+  lag_tolerance_minutes: 10           # a lag may use an older reading up to this much earlier (never newer)
+  change_minutes: [5, 10, 15, 30]
+  rate_min_spacing_fraction: 0.6      # a rate over k min needs readings >= 0.6*k min apart (else noise blows up)
+  rolling_windows_minutes: [15, 30, 60, 120, 180]
+  rolling_min_fraction: 0.5           # rolling stats need at least this share of slots present
+  insulin_windows_minutes: [15, 30, 60, 90, 120, 180, 240]
+  basal_windows_minutes: [30, 60]
+  bolus_windows_minutes: [30, 60, 120]
+  bolus_feature_types: [bolus, manual_correction]   # "bolus" in time-since-last-bolus / last amount
+  carbs_windows_minutes: [30, 60, 120]
+  insulin_lookback_minutes: 240       # sample is insulin_known only if basal was recorded throughout this
+  minutes_since_cap: 1440             # minutes-since features are capped (and used when nothing happened yet)
+
+iob:
+  # estimated_iob: an approximation, NOT a physiological measurement.
+  model: exponential                  # exponential insulin action curve (Loop / Maksimovic)
+  insulin_duration_hours: 5
+  peak_minutes: 75
+
+targets:
+  horizons_minutes: [15, 30, 45, 60]
+  tolerance_minutes: 2.5              # target = reading nearest to T+h within this; else no target
+
+splits:
+  # Fixed so the holdout never moves as new data arrives (spec section 26).
+  test_start: "2026-07-23"            # local date; test = test_start .. modelling_window.end
+  first_validation_month: "2025-12"
+  embargo_minutes: 60                 # = longest horizon; training targets never reach into validation/test
+
+report:
+  output_dir: reports
+  figures_dir: reports/figures
+
+monitoring:
+  # Daily: score production (and shadow) models on every complete day they never trained on.
+  drift_window_days: 7                # recent window checked for drift
+  drift_skill_tolerance: 0.15         # flag when MAE/persistence-MAE is >15% worse than over the model's first scored weeks
+  min_coverage_80: 0.70               # flag when the 80% interval covers less than this over the recent window
+  min_day_samples: 200                # days with fewer scored samples (of 288) are reported but not counted
+  recalibration_window_days: 56       # intervals are recalibrated on the model's errors from the last N days
+                                      # (28/42/56 compared 2026-10-08: longer = steadier bins; 56 best)
+  recalibration_min_days: 28          # ... only once it has at least this many scored days
+
+refresh:
+  # Monthly: refit the production recipe on all data, run it in shadow, promote after enough paired days.
+  shadow_min_days: 14                 # paired days (production vs shadow, same samples) before promotion

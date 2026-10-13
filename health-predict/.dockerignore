@@ -1,0 +1,13 @@
+.env
+.venv
+.git
+data
+models
+logs
+reports
+notebooks
+replica.env
+replica-db
+dbsync/dbsync
+prompt.txt
+**/__pycache__

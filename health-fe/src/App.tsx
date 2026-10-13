@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { api } from "./api/client";
 import type {
   LastReading,
@@ -6,12 +6,14 @@ import type {
   DailyTir,
   GmiResponse,
   InsightStats,
+  Prediction,
 } from "./api/types";
 import CurrentReading from "./components/CurrentReading";
 import GlucoseInsulinChart from "./components/GlucoseInsulinChart";
 import InsightsGrid from "./components/InsightsGrid";
 import Heatmap from "./components/Heatmap";
 import { avgColor, tirColor } from "./heatmapColors";
+import { toForecast } from "./chart/forecast";
 import "./App.css";
 
 // Polling, while the tab is visible: /lastreading is checked every minute
@@ -34,6 +36,10 @@ function App() {
   const [gmi, setGmi] = useState<GmiResponse | null>(null);
   const [dailyAvg, setDailyAvg] = useState<DailyAvg[]>([]);
   const [dailyTir, setDailyTir] = useState<DailyTir[]>([]);
+  // Predicted glucose after the latest reading (research model); refetched
+  // with every full refresh, so once per new reading.
+  const [prediction, setPrediction] = useState<Prediction | null>(null);
+  const forecast = useMemo(() => toForecast(prediction), [prediction]);
   const [error, setError] = useState<string | null>(null);
   // When the data was last refreshed (epoch ms). The chart uses it both to
   // refetch and, while following the latest data, as its window's end.
@@ -71,8 +77,10 @@ function App() {
         lastSlowRefresh.current = now;
         fetchSlowData();
       }
-      const [st] = await Promise.allSettled([api.getInsightStats(24)]);
+      const [st, pr] = await Promise.allSettled([api.getInsightStats(24), api.getPrediction()]);
       if (st.status === "fulfilled") setStats24h(st.value);
+      // No prediction (service off or down): hide the forecast.
+      setPrediction(pr.status === "fulfilled" ? pr.value : null);
 
       setError(null);
       setRefreshedAt(now);
@@ -119,7 +127,7 @@ function App() {
   return (
     <div className="dashboard">
       <header className="dashboard__header">
-        <CurrentReading reading={lastReading} />
+        <CurrentReading reading={lastReading} forecast={forecast} />
         <div className="dashboard__labels">
           <span className="dashboard__label">CGM Data by Dexcom</span>
           <span className="dashboard__label">Insulin Data by Tandem</span>
@@ -129,7 +137,7 @@ function App() {
       {error && <div className="dashboard__error">{error}</div>}
 
       <main className="dashboard__main">
-        <GlucoseInsulinChart refreshedAt={refreshedAt} />
+        <GlucoseInsulinChart refreshedAt={refreshedAt} forecast={forecast} />
 
         <InsightsGrid
           stats24h={stats24h}
