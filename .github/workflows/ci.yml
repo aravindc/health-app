@@ -230,7 +230,7 @@ jobs:
           cache-dependency-glob: health-predict/uv.lock
       # Everything but the deep-learning extra (PyTorch, several GB).
       - if: steps.changes.outputs.src == 'true'
-        run: uv sync --frozen --group dev --extra ml --extra api --extra dashboard
+        run: uv sync --frozen --group dev --extra pipeline --extra ml --extra api --extra dashboard
       - if: steps.changes.outputs.src == 'true'
         run: uv run --frozen ruff check src tests
       - if: steps.changes.outputs.src == 'true'

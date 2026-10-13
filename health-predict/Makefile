@@ -8,7 +8,7 @@ help:          ## list commands
 	@grep -E '^[a-z0-9-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
 
 install:       ## create .venv and install dependencies
-	uv sync --group dev --extra ml --extra dl --extra api --extra dashboard
+	uv sync --group dev --extra pipeline --extra ml --extra dl --extra api --extra dashboard
 
 ingest:        ## copy new rows from Postgres and rebuild clean tables
 	uv run python -m src.ingest
@@ -66,7 +66,7 @@ api:           ## run the prediction API on http://127.0.0.1:8000 (docs at /docs
 	uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
 
 docker-api:    ## run the prediction API in Docker (health-app's compose: http://health-predict:8000 on health_be)
-	cd .. && docker compose --profile predict up -d --build health-predict
+	cd .. && docker compose up -d --build health-predict
 
 models:        ## list model versions and which are in production
 	uv run python -m src.registry list

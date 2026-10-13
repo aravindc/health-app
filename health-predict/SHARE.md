@@ -15,7 +15,7 @@ forecast.
 | | |
 |---|---|
 | Base URL | `http://health-predict:8000` in Docker (internal `health_be` network only); `http://127.0.0.1:8000` with `make api` |
-| Start it | `docker compose --profile predict up -d health-predict` (health-app root), or `make api` here |
+| Start it | `docker compose up -d health-predict` (health-app root), or `make api` here |
 | Interactive docs / schema | `http://127.0.0.1:8000/docs`, `http://127.0.0.1:8000/openapi.json` |
 | Authentication | none (internal network or localhost only) |
 | CORS | **not enabled**. Call the API from your backend (server-side). A browser on another origin is blocked, so add a backend proxy route. |

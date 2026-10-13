@@ -154,3 +154,31 @@ def test_dashboard_is_self_contained_and_served(client):
     assert page.count('class="plotly-graph-div"') == 4 and page.count('class="card"') == 4
     assert not re.findall(r'<(script|link)[^>]+(src|href)="https?://', page)   # works offline
     assert client.get("/dashboard").status_code in (200, 404)
+
+
+def test_models_load_at_startup():
+    if not HAS_MODELS:
+        pytest.skip("no production models in models/registry.json")
+    from fastapi.testclient import TestClient
+
+    from src import serving
+    from src.api import app
+    serving.production_models.cache_clear()
+    with TestClient(app):                      # runs the lifespan startup
+        assert serving.production_models.cache_info().currsize == 1
+
+
+def test_without_models_the_server_starts_and_answers_503(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from src import serving
+    from src.api import app
+
+    def missing():
+        raise FileNotFoundError("models/registry.json")
+    monkeypatch.setattr(serving, "production_models", missing)
+    with TestClient(app) as c:                 # startup must not fail
+        r = c.get("/health")
+        assert r.status_code == 503 and "models not available" in r.json()["detail"]
+        assert c.post("/predict", json=request_body()).status_code == 503
+        assert "not a medical device" in c.get("/").json()["disclaimer"]

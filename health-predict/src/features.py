@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from src import config, db, iob
+from src import config, iob
 from src import preprocessing as pp
 
 log = logging.getLogger("features")
@@ -563,6 +563,8 @@ def main() -> None:
     s = config.settings()
     version = s["features"]["version"]
     start, end = window_bounds(s)
+
+    from src import db  # local: serving builds features without the database packages
 
     with db.duck() as duck:
         cgm, boluses, segments = load_inputs(duck)

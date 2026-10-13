@@ -3,9 +3,11 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o health-mongo-sync .
+# -trimpath and -s -w leave out local paths and debug symbols: a smaller
+# binary, and stack traces still work.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o health-mongo-sync .
 
-FROM docker.io/library/alpine:latest
+FROM docker.io/library/alpine:3.21
 RUN apk --no-cache add ca-certificates tzdata \
  && addgroup -S app && adduser -S -G app -H -h /app app
 WORKDIR /app

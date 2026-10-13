@@ -1,6 +1,10 @@
-"""HTTP API for glucose predictions.
+"""HTTP API for glucose predictions (FastAPI).
 
     uvicorn src.api:app --host 127.0.0.1 --port 8000      (or: make api)
+
+The production models are loaded when the server starts, so the first prediction isn't slowed by loading them. If
+they can't be loaded (none in models/, or a broken file), the server still starts: /health and /predict answer 503
+and loading is retried on each request, so copying models in is enough (or POST /admin/reload after a promotion).
 
 This system predicts glucose values for research and analysis. It is not a
 medical device and must not be used to determine insulin doses or make treatment
@@ -9,6 +13,9 @@ decisions. No dosing, correction, basal or carbohydrate recommendations are made
 
 from __future__ import annotations
 
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Literal
 
@@ -18,7 +25,30 @@ from pydantic import BaseModel, Field
 
 from src import DISCLAIMER, config, registry, serving
 
+log = logging.getLogger("uvicorn.error")  # uvicorn's own logger, so startup messages show in its output
+
+
+def load_models() -> dict:
+    """The production models (cached by serving.production_models); 503 if they can't be loaded."""
+    try:
+        return serving.production_models()
+    except Exception as e:  # noqa: BLE001 — report any loading problem
+        raise HTTPException(503, f"models not available: {e}") from None
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    try:
+        models = serving.production_models()
+        versions = {f"{h}m": f"{prod['model']}/{prod['version']}" for h, (_, _, _, prod) in models.items()}
+        log.info("Loaded production models: %s", versions)
+    except Exception as e:  # noqa: BLE001 — keep serving; /health reports it
+        log.error("Production models not available, answering 503 until they load: %s", e)
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="T1D glucose prediction (research)",
     version="1.0",
     description=f"**{DISCLAIMER}**\n\nPredicts glucose 15, 30, 45 and 60 minutes ahead from recent CGM and insulin "
@@ -97,11 +127,8 @@ def root() -> dict:
 
 @app.get("/health")
 def health() -> dict:
-    try:
-        serving.production_models()
-        return {"status": "ok"}
-    except Exception as e:  # noqa: BLE001 — report any loading problem
-        raise HTTPException(503, f"models not available: {e}") from None
+    load_models()
+    return {"status": "ok"}
 
 
 @app.get("/model")
@@ -119,10 +146,7 @@ def reload_models(request: Request) -> dict:
     if request.client is None or request.client.host not in LOCAL_CLIENTS:
         raise HTTPException(403, "reload is only allowed from this machine")
     serving.production_models.cache_clear()
-    try:
-        serving.production_models()
-    except Exception as e:  # noqa: BLE001 — report any loading problem
-        raise HTTPException(503, f"models not available: {e}") from None
+    load_models()
     return {"reloaded": True, "production": registry.load_registry()["production"]}
 
 
@@ -137,6 +161,7 @@ def dashboard() -> HTMLResponse:
 
 @app.post("/predict")
 def predict(req: PredictRequest) -> dict:
+    load_models()
     try:
         return serving.predict(to_history(req))
     except serving.InputError as e:

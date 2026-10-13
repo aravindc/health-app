@@ -40,8 +40,7 @@ uses [Semantic Versioning](https://semver.org/).
 - **health-predict: glucose prediction (research).** The t1danalysis
   project moves into the repo as `health-predict/`: the ML pipeline that
   trains models on this CGM and pump data, and a prediction API that runs
-  as the `health-predict` service (compose profile `predict`, internal
-  network only). Trained models and data stay out of git. The pipeline
+  as the `health-predict` service (internal network only). Trained models and data stay out of git. The pipeline
   reads `health-db` with the shared `POSTGRES_*` settings by default, or,
   with `PREDICT_DB=replica`, a copy of the server's database kept by
   `dbsync` in the optional `health-predict-replica` service.
@@ -56,6 +55,28 @@ uses [Semantic Versioning](https://semver.org/).
   rejected at startup.
 
 ### Changed
+
+- **Smaller images, about 1.63 GB → 750 MB in all.**
+  - health-predict: 1.43 GB → 629 MB. It builds in two stages, so uv and
+    its download cache stay out, and it installs only what serving needs:
+    the training pipeline's packages (DuckDB, psycopg, matplotlib, seaborn)
+    move to a new `pipeline` extra, used by `make install` and CI.
+  - health-fe: 61 → 19 MB, on nginx's `alpine-slim` image.
+  - Go services: 20–30% smaller, with binaries built without debug symbols
+    (`-trimpath -ldflags="-s -w"`). health-api drops the `wget` package,
+    since busybox's `wget` runs its healthcheck.
+- **health-predict loads its models at startup.** If they can't be loaded,
+  it still starts, and `/health` and `/predict` answer 503 until they can.
+  Before, `/predict` answered 500 in that case.
+- **Images build in OCI format (Podman) as they do with Docker.**
+  health-predict's healthcheck moves from its Dockerfile, where OCI images
+  drop it, to `docker-compose.yml`. Its base image is fully qualified, and
+  health-mongo-sync pins `alpine:3.21` instead of `latest`.
+- **health-predict always runs** (no compose profile). Without models it
+  reports unhealthy and the dashboard shows no forecast. The optional
+  replica Postgres moves onto `health_be`.
+- **Behind Caddy, health-api also joins `caddy-net`**, a fixed network
+  name that replaces `CADDY_NETWORK`.
 
 - **health-fe: security headers on every response** (#52). nginx now sends
   a strict Content-Security-Policy (only `'self'`, no inline scripts or

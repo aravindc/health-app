@@ -1,19 +1,27 @@
 # Health App
 
-A personal health monitoring dashboard for tracking continuous glucose monitor (CGM) data from Dexcom devices. Provides real-time glucose readings, historical trends, and analytics through a self-hosted web interface.
+A self-hosted personal health dashboard for type 1 diabetes: continuous
+glucose monitor (CGM) readings from Dexcom, insulin delivery from a Tandem
+pump, analytics, and research glucose predictions, in one web interface.
 
 ## Features
 
-- Real-time glucose readings synced from Dexcom Share API every 60 seconds
-- Day-anchored interactive glucose chart with per-day navigation
-- Time In Range (TIR) tracking — strict (4–7 mmol/L) and medical (4–10 mmol/L)
-- Glucose Management Indicator (GMI) based on 90-day averages
-- Daily average and quartile distribution analytics
-- 120-day heatmaps for daily averages and TIR percentages
-- Historical gap-fill from a Nightscout MongoDB backend
-- Hourly insulin (bolus + basal) sync from a Tandem Source insulin pump
-- Predicted glucose for the next 30 minutes, from the health-predict research model (optional)
-- Prometheus metrics endpoint for monitoring
+- **Current reading:** a dial with the latest glucose, its trend arrow and
+  the change since the previous reading, synced from Dexcom Share every 60
+  seconds (`SYNC_INTERVAL_SECONDS`)
+- **Glucose and insulin chart:** 24 hours of CGM readings coloured by range,
+  with basal delivery and modelled food and correction bolus activity in
+  synced panels; drag or use the jump buttons to move through the history
+- **Insights cards:** time in range (strict 4–7 and medical 4–10 mmol/L),
+  average, median, SD, CV, quartiles, highs and lows, GMI and more, each
+  with its own selectable period
+- **Heatmaps:** daily average and daily time in range for the last 90 days
+- **Insulin data:** hourly bolus, basal and CGM sync from Tandem Source
+- **Predicted glucose (optional):** the next 30 minutes on the chart and in
+  the header, from the [health-predict](health-predict/README.md) research
+  model (not a medical device)
+- **History gap-fill** from a Nightscout MongoDB backend
+- **Prometheus metrics** on an internal-only port
 
 ## Architecture
 
@@ -31,12 +39,12 @@ health-predict/      Python glucose prediction (research): ML pipeline + FastAPI
 
 | Layer        | Technology                           |
 |--------------|--------------------------------------|
-| Frontend     | React 19, TypeScript, Vite, Recharts |
+| Frontend     | React 19, TypeScript, Vite, SVG charts (Recharts for sparklines) |
 | Backend      | Go, Gin, GORM                        |
 | Database     | PostgreSQL (partitioned by month)    |
 | Dexcom sync  | Go, Dexcom Share API                 |
 | MongoDB sync | Go, MongoDB driver                   |
-| Prediction   | Python, scikit-learn, FastAPI (research only) |
+| Prediction   | Python 3.12, scikit-learn, FastAPI, uv (research only) |
 | Infra        | Docker/Podman Compose, nginx, Bytebase |
 
 ## Running
@@ -61,8 +69,9 @@ docker compose up -d
 | API      | http://localhost:9083/api (via the frontend's nginx), or directly at http://localhost:9082 |
 | Bytebase | http://localhost:9085       |
 | Database | localhost:9084 (PostgreSQL) |
+| Prediction replica (optional) | localhost:9086 (PostgreSQL, profile `predict-replica`) |
 
-All four ports are published on `127.0.0.1` only, so they're reachable from
+Every port is published on `127.0.0.1` only, so they're reachable from
 this host but not from the rest of the network. To reach them from another
 machine, use an SSH tunnel (e.g. `ssh -L 9083:localhost:9083 <host>`) rather
 than changing the bindings.
@@ -97,8 +106,11 @@ The compose file and Dockerfiles work unchanged under Podman:
 - `health-api`'s healthcheck lives in `docker-compose.yml`, not its
   Dockerfile — Podman builds OCI-format images by default, which drop
   `HEALTHCHECK`, and the `service_healthy` dependencies below rely on it.
-- Bind mounts (`health-db/data`, `bytebase/data`) carry `:Z` so they're
-  relabeled on SELinux hosts (Fedora/RHEL); it's a no-op elsewhere.
+- Bind mounts (`health-db/data`, `bytebase/data`, `health-predict/models`,
+  `health-predict/replica-db/data`) carry `:Z` so they're relabeled on
+  SELinux hosts (Fedora/RHEL); it's a no-op elsewhere.
+- Healthchecks (`health-api`, `health-predict`) also live in
+  `docker-compose.yml` for the same reason.
 
 Under rootless Podman, files in those bind-mounted directories are owned by
 subordinate UIDs, so removing them from the host needs
@@ -117,18 +129,18 @@ GIT_SHA=$(git rev-parse --short HEAD) docker compose up -d --build health-fe
 ### Running behind Caddy
 
 If Caddy runs as a container in its own compose stack, add
-`docker-compose.caddy.yml` to join `health-fe` to Caddy's network. Caddy
-proxies everything to `health-fe`, whose nginx serves the UI and forwards
-`/api` to `health-api`, so the `127.0.0.1` host ports aren't involved:
+`docker-compose.caddy.yml` to join `health-fe` and `health-api` to Caddy's
+network, `caddy-net`. Caddy proxies to them by service name, so the
+`127.0.0.1` host ports aren't involved:
 
 ```bash
-CADDY_NETWORK=caddy_default \
-  docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 ```
 
-`CADDY_NETWORK` is the name of Caddy's network (list them with
-`docker network ls`). It must already exist, and can go in the root `.env`
-instead of the command line.
+The network must be called `caddy-net` and must already exist: it's
+Caddy's own network (`docker network create caddy-net` if you create it
+yourself). Every container on it can reach `health-api:8080` directly,
+without Caddy's authentication, so keep only trusted containers there.
 
 Matching Caddyfile:
 
@@ -141,6 +153,50 @@ health.example.com {
 Caddy passes the original `Host` header through by default. Keep it that
 way (no `header_up Host ...`): `health-api` treats a request as same-origin
 only when the browser's `Origin` matches that `Host`.
+
+### Security
+
+The dashboard has no login of its own: **run it behind a reverse proxy that
+authenticates every request**. With Caddy and Authentik, for example, use
+Authentik's forward auth (its embedded outpost) in front of `health-fe`:
+
+```caddyfile
+health.example.com {
+    route {
+        reverse_proxy /outpost.goauthentik.io/* http://authentik-server:9000
+        forward_auth http://authentik-server:9000 {
+            uri /outpost.goauthentik.io/auth/caddy
+            copy_headers X-Authentik-Username X-Authentik-Groups X-Authentik-Email
+            trusted_proxies private_ranges
+        }
+        reverse_proxy health-fe:80
+    }
+}
+```
+
+Create a Proxy Provider (forward auth, single application) for the domain
+in Authentik and add it to the embedded outpost.
+
+The rest of the stack is locked down by default:
+
+- **Ports:** every published port is bound to `127.0.0.1`. Prometheus
+  metrics and the prediction service aren't published at all. Behind Caddy,
+  `health-api` is also on `caddy-net` (see
+  [Running behind Caddy](#running-behind-caddy)), where other containers
+  can reach it without authentication.
+- **Containers** run as non-root users. `health-fe`'s nginx sends a strict
+  Content-Security-Policy and other security headers, and hides its version.
+- **health-api:**
+  - It runs in gin's release mode unless `APP_ENV=development`.
+  - It serves only the last `MAX_HISTORY_DAYS` (default 90) of data.
+  - It returns generic error messages and logs the details.
+  - It trusts `X-Forwarded-For` only from `TRUSTED_PROXIES`, for its per-IP
+    rate limit.
+  - `API_KEYS` requires an `X-API-Key` header (compared in constant time)
+    on every endpoint except `/health`. The dashboard doesn't send one, so
+    leave it unset when you use the dashboard, and rely on the proxy.
+- **CI** scans dependencies on every push and weekly: `govulncheck`,
+  `npm audit` and `pip-audit`.
 
 ### Database schema
 
@@ -220,14 +276,15 @@ from the last 6 hours, basal rate changes and boluses. It calls the
    `health-predict/models/` (it's not in git: the models are built from
    personal health data). See [health-predict's README](health-predict/README.md).
 2. Set `PREDICT_URL=http://health-predict:8000` in `health-api/.env`.
-3. Start the service, which is behind the `predict` profile:
+3. Start it with the rest of the stack (`docker compose up -d`), or on its
+   own:
 
    ```bash
-   docker compose --profile predict up -d --build health-predict health-api
+   docker compose up -d --build health-predict health-api
    ```
 
-   Or set `COMPOSE_PROFILES=predict` in the root `.env` so a plain
-   `docker compose up -d` includes it.
+   Without models, the service starts but reports unhealthy, and the
+   dashboard shows no forecast.
 
 Training runs on the host with `make` targets in `health-predict/`. By
 default the pipeline reads `health-db` with the root `.env`'s `POSTGRES_*`
@@ -247,9 +304,10 @@ Config is split across a root `.env` plus one `.env` per service directory,
 each loaded via `env_file:` in `docker-compose.yml` (Compose supports a list
 there, and later files win on key collisions).
 
-The root `.env` holds only the shared database credentials
+The root `.env` holds the shared database credentials
 (`POSTGRES_HOST/PORT/DB/USER/PASSWORD`), since `health-db`, `health-sync`,
-`health-mongo-sync`, and `health-api` all connect to the same Postgres
+`health-mongo-sync`, `health-tandem-sync`, `health-api` and
+health-predict's training pipeline all connect to the same Postgres
 instance with the same login. That way the DB password lives in exactly one
 file, not four. Every other secret — Dexcom credentials, MongoDB URI, Tandem
 credentials — stays in its own service's `.env`, so e.g. `health-api` never
@@ -257,10 +315,10 @@ sees your Dexcom password.
 
 | File | Used by | Holds |
 |---|---|---|
-| `.env` (root) | `health-db`, `health-sync`, `health-mongo-sync`, `health-api`, `health-tandem-sync` | `POSTGRES_*` |
+| `.env` (root) | `health-db`, `health-sync`, `health-mongo-sync`, `health-api`, `health-tandem-sync`, health-predict's pipeline | `POSTGRES_*` |
 | `health-sync/.env` | `health-sync` | `BRIDGE_*`, `APPLICATION_ID`, sync settings |
 | `health-mongo-sync/.env` | `health-mongo-sync` | `MONGO_*` |
-| `health-api/.env` | `health-api` | Glucose ranges, `API_KEYS`, `APP_ENV` (production unless set to `development`) |
+| `health-api/.env` | `health-api` | Glucose ranges, `APP_ENV` (production unless `development`), optional `API_KEYS`, `PREDICT_URL`, `MAX_HISTORY_DAYS`, `TRUSTED_PROXIES`, `CORS_ALLOWED_ORIGINS`, `METRICS_PORT` |
 | `health-predict/.env` | health-predict's training pipeline (run on the host) | `PREDICT_DB`, host overrides; replica and `dbsync` settings |
 | `health-predict/replica.env` | `health-predict-replica` (optional) | The replica Postgres's own credentials |
 | `health-tandem-sync/.env` | `health-tandem-sync` | `TANDEM_USERNAME/PASSWORD` only — `POSTGRES_*` comes from the root `.env` (see its own `env_file:` list in `docker-compose.yml`), not duplicated here |
@@ -276,6 +334,8 @@ cp .env.example .env
 for d in health-sync health-mongo-sync health-api health-tandem-sync; do
   cp "$d/.env.example" "$d/.env"
 done
+# Only to train health-predict on this machine:
+cp health-predict/.env.example health-predict/.env
 ```
 
 See each `.env.example` for the full, commented variable list — Dexcom
@@ -290,18 +350,25 @@ baked into the frontend bundle at build time. It defaults to `/api`
 ## API Endpoints
 
 All endpoints require an `X-API-Key` header if `API_KEYS` is configured, except `/health`.
+Data endpoints serve only the last `MAX_HISTORY_DAYS` (default 90): hour and day parameters beyond it get a 400, and
+`from`/`to` windows are clipped to it.
 
 Prometheus metrics are served separately, at `/metrics` on port `9090` (`METRICS_PORT`). That port isn't published by `docker-compose.yml` or proxied by health-fe, so scrape it from a container on health-api's network: `http://health-api:9090/metrics`.
 
 | Method | Endpoint                          | Description                              |
 |--------|-----------------------------------|------------------------------------------|
-| GET    | `/health`                         | Health check                             |
+| GET    | `/health`                         | Health check (database reachable)        |
+| GET    | `/`                               | Welcome message                          |
 | GET    | `/lastreading`                    | Most recent glucose reading + trend      |
+| GET    | `/latest/:page`                   | Latest readings, 36 (~3 h) per page (page 1 = newest) |
+| GET    | `/last4h/:page`                   | Readings in 4-hour pages (48 per page)   |
+| GET    | `/last12h/:page`                  | Readings in 12-hour pages (144 per page) |
 | GET    | `/lastxh/:hours`                  | Readings for the last N hours            |
 | GET    | `/lastxh/:hours/offset/:offset`   | Readings for N hours ending offset ago   |
 | GET    | `/chart?from=&to=`                | Glucose readings for an arbitrary window (RFC3339) |
 | GET    | `/bolus?from=&to=`                | Bolus doses + modeled food/correction activity for a window |
 | GET    | `/basal?from=&to=`                | Commanded basal-rate step points for a window |
+| GET    | `/firstdate`                      | Earliest date with data (or the start of the history window) |
 | GET    | `/dailyavg/:days`                 | Daily averages for past N days           |
 | GET    | `/dailytir/:days`                 | Daily Time In Range for past N days      |
 | GET    | `/avgmmol/:period`                | Average mmol/L for period (1h–90d)       |
@@ -311,3 +378,27 @@ Prometheus metrics are served separately, at `/metrics` on port `9090` (`METRICS
 | GET    | `/prediction`                     | Predicted glucose 15–60 min after the latest reading, from health-predict (`{"available": false, "reason": ...}` when there's none) |
 | GET    | `/insightstats/:hours`            | All Insights card stats for the last N hours (% in range, mean, median, SD, CV, quartiles, highs/lows, unicorns, range splits, 288-point sparkline) |
 | GET    | `/timeinrange/:hours`             | Consecutive time in strict range         |
+| GET    | `/7dsparkline/:day`               | One day's readings for a 7-day sparkline (day 1 = today) |
+| GET    | `/last24hsparkline`               | Readings from the last 24 hours, for a sparkline |
+
+## Development
+
+Each module has its own tests, run in CI (`.github/workflows/ci.yml`) for
+the modules a change touches:
+
+```bash
+(cd health-api && go test ./...)        # likewise health-sync, health-mongo-sync, health-tandem-sync
+(cd health-fe && npm ci && npm run lint && npm test)
+(cd health-predict && uv sync --group dev --extra pipeline --extra ml --extra api --extra dashboard && make lint test)
+```
+
+`make install` in health-predict also installs PyTorch (several GB) for the
+sequence models; the tests skip those models without it.
+
+For the frontend with live reload, run `npm run dev` in `health-fe`: the
+Vite dev server proxies `/api` to `health-api` on `localhost:9082`, as
+nginx does in the container.
+
+`.github/workflows/security.yml` scans dependencies on every push and PR and
+weekly: `govulncheck` for each Go module, `npm audit` for health-fe's
+production dependencies and `pip-audit` for health-predict's API image.
