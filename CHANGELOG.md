@@ -81,6 +81,18 @@ uses [Semantic Versioning](https://semver.org/).
   to clear three advisories (esbuild 0.28.2, ajv 6.15.0, source-map-js
   1.2.2); none reached the shipped UI.
 
+### Fixed
+
+- **health-predict: live predictions at times off the 5-minute grid.**
+  Insulin deliveries were binned on the clock's 5-minute marks rather than
+  on the prediction's own 5-minute slots, so at a live CGM time (never
+  exactly on the grid) the bins straddled the slots. Every live prediction
+  warned that "basal history does not cover the last 240 min" even with
+  complete basal, and the insulin windows and estimated insulin on board
+  were understated (e.g. 8% lower IOB). Bins now follow the slots. Training
+  is unaffected: grid-aligned features are identical, so no retraining is
+  needed.
+
 ### Removed
 
 - **health-api: `PUT /insulin`**, which nothing in the project used (#59).
