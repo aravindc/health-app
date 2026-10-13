@@ -49,8 +49,8 @@ uses [Semantic Versioning](https://semver.org/).
   health-api serves `GET /prediction`: predicted glucose 15–60 minutes
   after the latest reading, with 80% and 95% ranges. The dashboard shows
   the next 30 minutes as a dashed forecast on the Sensor glucose chart and
-  the 30-minute value next to the current reading, with the model's notes
-  and its research-only disclaimer.
+  the 15- and 30-minute values in a Predicted block on the right of the
+  header, with the model's notes and its research-only disclaimer.
 - **health-api: `MAX_HISTORY_DAYS` setting** to extend the history window
   beyond 90 days, e.g. `MAX_HISTORY_DAYS=365`. Values below 90 are
   rejected at startup.

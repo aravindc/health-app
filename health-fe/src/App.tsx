@@ -9,6 +9,7 @@ import type {
   Prediction,
 } from "./api/types";
 import CurrentReading from "./components/CurrentReading";
+import PredictedGlucose from "./components/PredictedGlucose";
 import GlucoseInsulinChart from "./components/GlucoseInsulinChart";
 import InsightsGrid from "./components/InsightsGrid";
 import Heatmap from "./components/Heatmap";
@@ -127,10 +128,13 @@ function App() {
   return (
     <div className="dashboard">
       <header className="dashboard__header">
-        <CurrentReading reading={lastReading} forecast={forecast} />
-        <div className="dashboard__labels">
-          <span className="dashboard__label">CGM Data by Dexcom</span>
-          <span className="dashboard__label">Insulin Data by Tandem</span>
+        <CurrentReading reading={lastReading} />
+        <div className="dashboard__aside">
+          <PredictedGlucose forecast={forecast} />
+          <div className="dashboard__labels">
+            <span className="dashboard__label">CGM Data by Dexcom</span>
+            <span className="dashboard__label">Insulin Data by Tandem</span>
+          </div>
         </div>
       </header>
 

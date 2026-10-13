@@ -17,11 +17,50 @@
   border-bottom: 1px solid #333;
 }
 
+/* Right side of the header: the Predicted block above the data labels. */
+.dashboard__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  align-self: stretch;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .dashboard__labels {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 0.125rem;
+}
+
+/* Predicted glucose (research model, PredictedGlucose.tsx). */
+.predicted-glucose {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  cursor: help;
+}
+
+.predicted-glucose__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #56b4e9; /* the chart's forecast colour */
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.predicted-glucose__row {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.predicted-glucose__value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--predicted-color, #ddd);
+  font-variant-numeric: tabular-nums;
 }
 
 .dashboard__label {
@@ -159,27 +198,6 @@
 .current-reading__meta {
   font-size: 0.8rem;
   color: #666;
-}
-
-/* Predicted glucose in FORECAST_MINUTES (research model): the chart's
-   forecast colour, kept small so it reads as secondary to the reading. */
-.current-reading__forecast {
-  font-size: 0.8rem;
-  color: #aaa;
-  cursor: help;
-}
-
-.current-reading__forecast-label {
-  color: #56b4e9;
-}
-
-.current-reading__forecast-value {
-  font-weight: 600;
-  color: #ddd;
-}
-
-.current-reading__forecast-range {
-  color: #777;
 }
 
 /* No reading for STALE_MINUTES (CurrentReading.tsx): grey out the dial and

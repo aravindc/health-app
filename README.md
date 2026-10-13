@@ -203,11 +203,12 @@ cd health-tandem-sync
 
 The dashboard can show predicted glucose for the 30 minutes after the
 latest reading: a dashed line with shaded 80% and 95% ranges on the Sensor
-glucose chart, and the 30-minute value next to the current reading. The
-predictions come from [`health-predict`](health-predict/README.md), a
-research model trained on this pump and CGM data. **It is not a medical
-device, and its predictions must not be used for insulin doses or treatment
-decisions.** The dashboard shows this disclaimer next to the forecast.
+glucose chart, and the 15- and 30-minute values in a Predicted block on
+the right of the header. The predictions come from
+[`health-predict`](health-predict/README.md), a research model trained on
+this pump and CGM data. **It is not a medical device, and its predictions
+must not be used for insulin doses or treatment decisions.** The
+dashboard shows this disclaimer next to the forecast.
 
 `health-api` builds each request from its own tables, the same way
 health-predict builds its training data: Tandem and Dexcom CGM readings

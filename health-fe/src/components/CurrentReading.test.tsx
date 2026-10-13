@@ -3,7 +3,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import CurrentReading from "./CurrentReading";
 import type { LastReading } from "../api/types";
-import type { Forecast } from "../chart/forecast";
 import {
   COLOR_CGM_CRITICAL,
   COLOR_CGM_ELEVATED,
@@ -13,7 +12,7 @@ import {
 let container: HTMLDivElement;
 let root: Root;
 
-function render(reading: Partial<LastReading> | null, forecast: Forecast | null = null) {
+function render(reading: Partial<LastReading> | null) {
   const full = reading && {
     bg_time: Date.now() / 1000,
     bg_mmol: 6.2,
@@ -21,7 +20,7 @@ function render(reading: Partial<LastReading> | null, forecast: Forecast | null 
     bg_mmol_diff: -0.2,
     ...reading,
   };
-  act(() => root.render(<CurrentReading reading={full} forecast={forecast} />));
+  act(() => root.render(<CurrentReading reading={full} />));
 }
 
 const el = () => container.querySelector(".current-reading")!;
@@ -162,31 +161,5 @@ describe("CurrentReading change since last reading", () => {
     const number = el.textContent!.replace(mark!, "").replace(word!, "");
     expect(`${mark}${number}`).toBe(shown);
     expect(`${word}${number}`).toBe(spoken);
-  });
-});
-
-describe("CurrentReading forecast", () => {
-  const point = (minutes: number, value: number) => ({
-    time: Date.now() + minutes * 60_000, minutes, value,
-    lower: value - 1, upper: value + 1, lower95: value - 2, upper95: value + 2,
-  });
-  const forecast: Forecast = {
-    points: [point(0, 6.2), point(15, 6.8), point(30, 7.46)],
-    warnings: [],
-    disclaimer: "Research use only.",
-  };
-  const shown = () => container.querySelector(".current-reading__forecast");
-
-  it("shows the 30-minute prediction with its 80% range", () => {
-    render({}, forecast);
-    expect(shown()!.textContent).toBe("In 30 min 7.5 (6.5–8.5)");
-    expect(shown()!.getAttribute("title")).toContain("Research use only.");
-  });
-
-  it("is hidden without a forecast, or when the reading is stale", () => {
-    render({});
-    expect(shown()).toBeNull();
-    render({ bg_time: Date.now() / 1000 - 20 * 60 }, forecast);
-    expect(shown()).toBeNull();
   });
 });
