@@ -1,6 +1,6 @@
 module health-mongo-sync
 
-go 1.27
+go 1.27.2
 
 require (
 	github.com/sirupsen/logrus v1.9.4

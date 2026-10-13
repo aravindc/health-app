@@ -27,6 +27,14 @@ uses [Semantic Versioning](https://semver.org/).
   `"database": "unavailable"`), with the same status codes, and the full
   error goes to the server log along with the request's route.
 
+- **Go 1.27.2 for all Go services.** Go advisories published since the last
+  scan affected health-api, health-sync, health-mongo-sync and
+  health-tandem-sync through the standard library (`crypto/tls`,
+  `net/http`, HTTP/2, `net/textproto`), fixed in Go 1.27.2. Each module now
+  requires Go 1.27.2, and the Dockerfiles pin `golang:1.27.2-alpine`.
+  health-api also updates `golang.org/x/net` to v0.60.0 (four HTTP/2
+  advisories). govulncheck now reports no reachable vulnerabilities.
+
 ### Added
 
 - **health-api: `MAX_HISTORY_DAYS` setting** to extend the history window

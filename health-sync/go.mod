@@ -1,6 +1,6 @@
 module health-sync
 
-go 1.27
+go 1.27.2
 
 require (
 	github.com/go-resty/resty/v2 v2.17.2
