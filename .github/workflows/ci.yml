@@ -1,12 +1,14 @@
 name: CI
 
 # One job per module (health-api, health-sync, health-mongo-sync,
-# health-tandem-sync, health-fe), each gated by a `paths` filter so a
+# health-tandem-sync, health-fe, health-predict), each gated by a `paths` filter so a
 # change to one module doesn't trigger the others. Each Go job runs
 # build -> vet -> test using that module's own go.mod-declared version
 # (they differ per module, e.g. health-tandem-sync is ahead of
 # health-sync), then validates its Dockerfile builds. health-fe runs
 # lint -> test -> typecheck+build, then validates its Dockerfile builds.
+# health-predict (Python) runs ruff -> pytest without PyTorch (its sequence
+# model tests skip themselves) and builds the API image.
 # See docker-compose.yml for the build contexts/dockerfiles this mirrors.
 #
 # Docker build steps are validation only (push: false) — they catch
@@ -205,3 +207,49 @@ jobs:
           push: false
           cache-from: type=gha,scope=health-fe
           cache-to: type=gha,mode=max,scope=health-fe
+
+  health-predict:
+    name: health-predict
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: health-predict
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'health-predict/**'
+      - if: steps.changes.outputs.src == 'true'
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version-file: health-predict/.python-version
+          enable-cache: true
+          cache-dependency-glob: health-predict/uv.lock
+      # Everything but the deep-learning extra (PyTorch, several GB).
+      - if: steps.changes.outputs.src == 'true'
+        run: uv sync --frozen --group dev --extra ml --extra api --extra dashboard
+      - if: steps.changes.outputs.src == 'true'
+        run: uv run --frozen ruff check src tests
+      - if: steps.changes.outputs.src == 'true'
+        run: uv run --frozen pytest
+      - if: steps.changes.outputs.src == 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: health-predict/dbsync/go.mod
+          cache-dependency-path: health-predict/dbsync/go.sum
+      - if: steps.changes.outputs.src == 'true'
+        working-directory: health-predict/dbsync
+        run: go build ./... && go vet ./...
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/setup-buildx-action@v4
+      - if: steps.changes.outputs.src == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: health-predict
+          file: health-predict/docker/Dockerfile
+          push: false
+          cache-from: type=gha,scope=health-predict
+          cache-to: type=gha,mode=max,scope=health-predict

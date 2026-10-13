@@ -20,6 +20,8 @@ import (
 type Handler struct {
 	DB  *gorm.DB
 	Cfg *config.Config
+	// pred caches the last glucose prediction (see GetPrediction).
+	pred predictionCache
 }
 
 // NewHandler creates a new handler with DB connection

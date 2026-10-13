@@ -1,0 +1,69 @@
+# Maps source-system codes to the project's terminology. Edit this file, not
+# the code, when a source uses different codes.
+
+# tandem_bolus.event_properties: bolusType / options. Rules are checked in
+# order; the first match wins. `has_carbs` is optional (true/false/omitted).
+bolus_rules:
+  - match: {bolus_type: 2, options: 3}
+    delivery_type: automated_correction
+    is_automated: true
+    note: Control-IQ automatic correction bolus
+  - match: {bolus_type: 3, options: 4, has_carbs: true}
+    delivery_type: bolus
+    is_automated: false
+    note: Same as a manual bolus (user decision 2026-10-07); appears from 2025-08-08
+  - match: {bolus_type: 3, options: 4, has_carbs: false}
+    delivery_type: manual_correction
+    is_automated: false
+    note: Type 3 without carbs (user decision 2026-10-07)
+  - match: {bolus_type: 1}
+    delivery_type: bolus
+    is_automated: false
+    note: Manual bolus entered on the pump; options 1 = split / extended delivery
+  - match: {}
+    delivery_type: unknown
+    is_automated: false
+    note: Fallback; reported as a data-quality issue
+
+# tandem_bolus.completion_status
+bolus_completion_status:
+  3: completed
+  0: cancelled
+  1: terminated_early
+
+# tandem_basal.event_properties.changeType (a list; mapped by its sorted contents)
+basal_change_types:
+  "[0]": automated               # Control-IQ rate change
+  "[4]": suspend
+  "[5]": profile_change
+  "[0, 5]": automated_profile_change
+  "[1, 5]": temp_rate_profile_change
+  "[1]": temp_rate
+  default: unknown
+
+# CGM trend codes -> ordinal direction (+3 fastest rise ... -3 fastest fall).
+# Verified against observed rates (2026-10-07): Tandem `rate` is in 0.1 mg/dL/min;
+# code 1 >= 1.5, 2 = 1.0-1.4, 3 = 0.5-0.9, 4 = flat (|rate| < 0.5), 5-7 mirror.
+# Thresholds are tighter than standard Dexcom arrows, so neutral names are used.
+cgm_trend:
+  tandem:
+    1: {name: rising_fast, ordinal: 3}
+    2: {name: rising, ordinal: 2}
+    3: {name: rising_slow, ordinal: 1}
+    4: {name: flat, ordinal: 0}
+    5: {name: falling_slow, ordinal: -1}
+    6: {name: falling, ordinal: -2}
+    7: {name: falling_fast, ordinal: -3}
+  nightscout:
+    0: {name: none, ordinal: null}
+    1: {name: rising_fast, ordinal: 3}
+    2: {name: rising, ordinal: 2}
+    3: {name: rising_slow, ordinal: 1}
+    4: {name: flat, ordinal: 0}
+    5: {name: falling_slow, ordinal: -1}
+    6: {name: falling, ordinal: -2}
+    7: {name: falling_fast, ordinal: -3}
+    8: {name: not_computable, ordinal: null}
+
+# Tandem cgm `rate` unit
+tandem_rate_mgdl_per_min_per_unit: 0.1

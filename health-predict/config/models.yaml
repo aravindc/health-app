@@ -1,0 +1,121 @@
+# Model, feature-set and experiment configuration for Phase 3.
+# Hyperparameters are fixed defaults (not tuned on validation folds), so the
+# rolling-origin results are an honest estimate. Tuning, if any, comes later
+# and must use inner splits of the training data only.
+
+# Feature groups come from the feature catalog (feature_catalog_v1.group).
+# The `calendar` group (day of year) is deliberately in no set: with ~1 year of history it acts as a date index
+# and makes tree models memorise periods (see reports/model_comparison.md).
+feature_sets:
+  glucose_only: [current, history, velocity, rolling, time]
+  glucose_insulin_no_iob: [current, history, velocity, rolling, time, insulin]
+  glucose_insulin: [current, history, velocity, rolling, time, insulin, iob]
+  glucose_insulin_carbs: [current, history, velocity, rolling, time, insulin, iob, carbs]
+
+default_feature_set: glucose_insulin
+
+# Samples used for training AND evaluation of every model (same rows for all,
+# so comparisons are fair): current reading, target present, insulin known.
+sample_filter:
+  require_insulin_known: true
+
+models:
+  persistence: {}
+  linear_trend:
+    # current + velocity * horizon; first available of these velocities is used
+    velocity_features: [velocity_15m_mmol_per_h, velocity_10m_mmol_per_h, velocity_5m_mmol_per_h]
+  linear:
+    alpha: 1.0                 # ridge regularisation (standardised features)
+    clip_quantiles: [0.001, 0.999]   # winsorise inputs at training-fold quantiles
+  random_forest:
+    n_estimators: 200
+    min_samples_leaf: 20
+    max_features: 0.33
+    max_samples: 0.5
+    n_jobs: 8                  # more threads is slower here (oversubscription on WSL)
+  xgboost:
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 6
+    min_child_weight: 20
+    subsample: 0.8
+    colsample_bytree: 0.8
+    tree_method: hist
+    n_jobs: 8                  # more threads is slower here (oversubscription on WSL)
+  lightgbm:
+    n_estimators: 500
+    learning_rate: 0.05
+    num_leaves: 63
+    min_child_samples: 50
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    n_jobs: 8                  # more threads is slower here (oversubscription on WSL)
+    verbose: -1
+
+# Sequence models (Phase 4). One network predicts all horizons at once (glucose change, delta target).
+sequence:
+  lookback_minutes: 120          # input window (spec: 60–120 min)
+  include_carbs: false
+  inner_validation_fraction: 0.15  # last share of each training fold (by time) used for early stopping
+  device: auto                   # auto | cuda | cpu
+  lstm:
+    hidden_size: 64
+    num_layers: 2
+    dropout: 0.1
+  tcn:
+    channels: 32
+    kernel_size: 3
+    levels: 4                    # dilations 1, 2, 4, 8 -> receptive field 31 steps (>= 24-step window)
+    dropout: 0.1
+  training:
+    batch_size: 512
+    learning_rate: 0.001
+    weight_decay: 0.00001
+    max_epochs: 40
+    patience: 5                  # early stopping on the inner validation split
+    huber_delta: 1.0             # loss on standardised deltas
+
+# What `python -m src.train --cv` runs by default.
+experiments:
+  main:            # every model, both target types, default feature set
+    models: [persistence, linear_trend, linear, random_forest, xgboost, lightgbm]
+    target_types: [direct, delta]
+    feature_sets: [glucose_insulin]
+  sequence:        # Phase 4: multi-horizon sequence models
+    models: [lstm, tcn]
+    target_types: [delta]
+    feature_sets: [sequence]
+  ablation:        # which inputs help: LightGBM, delta target
+    models: [lightgbm]
+    target_types: [delta]
+    feature_sets: [glucose_only, glucose_insulin_no_iob, glucose_insulin, glucose_insulin_carbs]
+
+selection:
+  # A more complex model is adopted only if it beats the simpler one by at least this much MAE
+  # (relative), and wins in at least this share of validation folds.
+  min_relative_improvement: 0.05
+  min_fold_win_share: 0.75
+
+# Phase 5 analysis of the selected model.
+analysis:
+  intervals:
+    levels: [0.8, 0.95]
+    primary_method: conformal       # declared before looking at test results
+    # Mondrian (bin-wise) split conformal: residual quantiles per bin of current glucose x direction,
+    # calibrated on out-of-fold validation residuals (development period only).
+    min_bin_size: 300               # smaller bins fall back to glucose-range-only, then to all residuals
+    quantile_regression: [0.025, 0.1, 0.9, 0.975]   # LightGBM quantile models, compared against conformal
+  categories:
+    glucose_ranges_mmol: [3.9, 7.0, 10.0, 13.9]     # <3.9 | 3.9–7 | 7–10 | 10–13.9 | >13.9
+    stable_rate_mmol_per_min: 0.055                 # |rate| below this = stable (≈ 1 mg/dL/min)
+    rapid_rate_mmol_per_min: 0.1                    # |rate| at/above this = rapid (spec special case)
+    rate_feature: velocity_15m_mmol_per_h
+    recent_bolus_minutes: 120
+    high_insulin_quantile: 0.75     # "high recent insulin" = insulin_last_60m above this training quantile
+    post_bolus_bins_minutes: [0, 30, 60, 120, 240]
+    overnight_hours: [0, 6]
+  shap:
+    horizons: [30, 60]
+    sample_size: 1000
+    n_jobs: 8

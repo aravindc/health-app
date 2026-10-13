@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -34,6 +35,10 @@ type Config struct {
 	// default, since the dashboard's fixed 90-day views (GMI, heatmaps, the
 	// 90d period) need at least that much.
 	MaxHistoryDays int
+	// PredictURL is the base URL of the health-predict prediction API
+	// (PREDICT_URL, e.g. http://health-predict:8000). Empty turns predictions
+	// off.
+	PredictURL string
 }
 
 // The values APP_ENV accepts. Production is the default, so a deployment
@@ -157,6 +162,14 @@ func LoadConfig() (*Config, error) {
 		maxHistoryDays = n
 	}
 
+	predictURL := strings.TrimRight(strings.TrimSpace(os.Getenv("PREDICT_URL")), "/")
+	if predictURL != "" {
+		u, err := url.Parse(predictURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, fmt.Errorf("PREDICT_URL: %q must be an http:// or https:// URL", predictURL)
+		}
+	}
+
 	if len(corsOrigins) == 0 {
 		if appEnv == EnvProduction {
 			corsOrigins = defaultProdCORSOrigins
@@ -175,5 +188,6 @@ func LoadConfig() (*Config, error) {
 		CORSAllowedOrigins: corsOrigins,
 		TrustedProxies:     trustedProxies,
 		MaxHistoryDays:     maxHistoryDays,
+		PredictURL:         predictURL,
 	}, nil
 }

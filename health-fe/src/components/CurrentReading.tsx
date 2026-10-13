@@ -7,6 +7,7 @@ import {
   DEFAULT_MAX_MMOL,
 } from "../chart/scale";
 import { colorForCgmRange } from "../chart/cgmColors";
+import { FORECAST_MINUTES, type Forecast } from "../chart/forecast";
 
 // Trend codes (as stored by health-sync's TrendToDirection) → where the
 // pointer on the circle's edge points (degrees clockwise from "steady", i.e.
@@ -61,9 +62,12 @@ const STALE_MINUTES = 15;
 
 interface Props {
   reading: LastReading | null;
+  // Predicted glucose (research model); its FORECAST_MINUTES value is
+  // shown under the reading.
+  forecast?: Forecast | null;
 }
 
-export default function CurrentReading({ reading }: Props) {
+export default function CurrentReading({ reading, forecast = null }: Props) {
   if (!reading) {
     return (
       <div className="current-reading current-reading--none">
@@ -104,6 +108,10 @@ export default function CurrentReading({ reading }: Props) {
   const isStale = minsAgo >= STALE_MINUTES;
   const timeLabel =
     minsAgo < 1 ? "just now" : `${isStale ? "⚠ " : ""}${minsAgo} min ago`;
+  // Not shown for a stale reading: it would predict from old data.
+  const predicted = isStale
+    ? undefined
+    : forecast?.points.find((p) => p.minutes === FORECAST_MINUTES);
 
   return (
     <div
@@ -148,6 +156,18 @@ export default function CurrentReading({ reading }: Props) {
           {diffAbs}
         </span>
         <span className="current-reading__meta">{timeLabel}</span>
+        {predicted && (
+          <span
+            className="current-reading__forecast"
+            title={`Predicted by a research model, 80% range ${predicted.lower.toFixed(1)}–${predicted.upper.toFixed(1)} mmol/L. ${forecast!.disclaimer}`}
+          >
+            <span className="current-reading__forecast-label">In {FORECAST_MINUTES} min</span>{" "}
+            <span className="current-reading__forecast-value">{predicted.value.toFixed(1)}</span>{" "}
+            <span className="current-reading__forecast-range">
+              ({predicted.lower.toFixed(1)}–{predicted.upper.toFixed(1)})
+            </span>
+          </span>
+        )}
       </div>
     </div>
   );

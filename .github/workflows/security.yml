@@ -1,7 +1,8 @@
 name: Security
 
-# Dependency vulnerability scanning: govulncheck for each Go module and
-# npm audit for health-fe's production dependencies.
+# Dependency vulnerability scanning: govulncheck for each Go module, npm
+# audit for health-fe's production dependencies, and pip-audit for the
+# Python packages health-predict's API image installs.
 #
 # Unlike CI, there is no paths filter: new advisories are published
 # against code that hasn't changed, so every module is scanned on every
@@ -31,7 +32,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: [health-api, health-sync, health-mongo-sync, health-tandem-sync]
+        module:
+          [health-api, health-sync, health-mongo-sync, health-tandem-sync, health-predict/dbsync]
     defaults:
       run:
         working-directory: ${{ matrix.module }}
@@ -62,3 +64,18 @@ jobs:
       # dependencies (build and test tooling) never reach the browser or
       # the nginx image, so they're left to Dependabot.
       - run: npm audit --omit=dev
+
+  pip-audit:
+    name: pip-audit (health-predict)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: health-predict
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      # The locked versions the API image installs (base + the api extra),
+      # with hashes; nothing is installed. The ML/notebook extras only run
+      # locally.
+      - run: uv export --frozen --no-dev --extra api --no-emit-project --format requirements-txt -o requirements-api.txt
+      - run: uvx pip-audit@2.10.0 --disable-pip --no-deps -r requirements-api.txt
