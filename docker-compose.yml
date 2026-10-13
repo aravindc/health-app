@@ -127,13 +127,10 @@ services:
   # on health_be, with no published port: health-api calls it at
   # http://health-predict:8000 (PREDICT_URL in health-api/.env). It serves
   # the trained models in health-predict/models (not in git; see
-  # health-predict/README.md), mounted read-only. Behind the `predict`
-  # profile so a checkout without models doesn't start it: run with
-  # `docker compose --profile predict up -d`, or set COMPOSE_PROFILES=predict
-  # in the root .env.
+  # health-predict/README.md), mounted read-only. Without models it starts
+  # but reports unhealthy, and the dashboard shows no forecast.
   health-predict:
     container_name: health-predict
-    profiles: [predict]
     networks:
       - health_be
     build:
@@ -142,6 +139,20 @@ services:
     volumes:
       - "./health-predict/models:/app/models:ro,Z"
     restart: on-failure
+    # Here rather than in the Dockerfile: Podman's OCI-format images drop
+    # HEALTHCHECK (see health-api's healthcheck).
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
   # Optional local copy of another health-db (e.g. the server's, which has
   # the full pump history), for training health-predict on this machine:
   # dbsync (health-predict/dbsync) keeps it current, and the pipeline reads
@@ -154,7 +165,7 @@ services:
     profiles: [predict-replica]
     image: docker.io/library/postgres:18
     networks:
-      - health_predict
+      - health_be
     restart: on-failure
     ports:
       - "127.0.0.1:9086:5432"
@@ -189,9 +200,3 @@ networks:
     ipam:
       config:
         - subnet: 10.89.3.0/24
-  health_predict:
-    name: health_predict
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 10.89.5.0/24

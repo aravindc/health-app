@@ -15,7 +15,7 @@ RUN npm run build
 # (nginx.conf), which docker-compose allows non-root processes to bind via
 # net.ipv4.ip_unprivileged_port_start, so Caddy's upstream health-fe:80 and
 # the host port mapping are unchanged.
-FROM docker.io/nginxinc/nginx-unprivileged:alpine
+FROM docker.io/nginxinc/nginx-unprivileged:alpine-slim
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Outside conf.d, which nginx includes wholesale at the http level.

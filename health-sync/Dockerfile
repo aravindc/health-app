@@ -6,7 +6,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o health-sync .
+# -trimpath and -s -w leave out local paths and debug symbols: a smaller
+# binary, and stack traces still work.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o health-sync .
 
 FROM docker.io/library/alpine:3.21
 

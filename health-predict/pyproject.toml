@@ -4,21 +4,25 @@ version = "0.1.0"
 description = "Research system for predicting future glucose from CGM and insulin data. Not a medical device."
 readme = "README.md"
 requires-python = ">=3.12"
+# What serving needs (the API image installs only these plus the api extra). pyarrow stays: pandas uses it for
+# text columns, and serving must build features exactly as training did.
 dependencies = [
-    "duckdb>=1.1",
     "numpy>=2.0",
     "pandas>=2.2",
     "pyarrow>=17",
-    "psycopg[binary]>=3.2",
-    "python-dotenv>=1.0",
-    "pytz>=2024.1",            # needed by duckdb to return TIMESTAMPTZ to Python
     "pyyaml>=6.0",
-    "matplotlib>=3.9",
-    "seaborn>=0.13",
 ]
 
 [project.optional-dependencies]
-# Added in later phases; kept optional so Phase 1 installs quickly.
+# The training pipeline: databases (ingest, monitoring) and reports. Not in the API image.
+pipeline = [
+    "duckdb>=1.1",
+    "psycopg[binary]>=3.2",
+    "python-dotenv>=1.0",
+    "pytz>=2024.1",            # needed by duckdb to return TIMESTAMPTZ to Python
+    "matplotlib>=3.9",
+    "seaborn>=0.13",
+]
 ml = ["scikit-learn>=1.5", "xgboost>=2.1", "lightgbm>=4.5", "shap>=0.46"]
 dl = ["torch>=2.4"]
 api = ["fastapi>=0.115", "uvicorn>=0.30", "scikit-learn>=1.5"]   # serving only: no torch/xgboost/lightgbm

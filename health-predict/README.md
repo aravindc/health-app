@@ -199,8 +199,8 @@ Also available:
 - `GET /health` — service status.
 - `python -m src.predict --at <time>` — predicts from the local database as of that time.
 
-Docker: `make docker-api` starts the `health-predict` service from health-app's `docker-compose.yml` (profile
-`predict`). The image holds code only. Models are mounted read-only, and no port is published: health-api reaches it
+Docker: `make docker-api` starts the `health-predict` service from health-app's `docker-compose.yml`. The image holds
+code only. Models are mounted read-only, and no port is published: health-api reaches it
 at `http://health-predict:8000` on the internal `health_be` network.
 
 ## Dashboard
