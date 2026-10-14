@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"math"
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -380,32 +383,83 @@ func predictionUnavailable(c *gin.Context, reason string) {
 	c.JSON(http.StatusOK, gin.H{"available": false, "reason": reason})
 }
 
+// errPredictService marks a failure to reach health-predict (502), as
+// opposed to a database error (500).
+var errPredictService = errors.New("prediction service unavailable")
+
 // GetPrediction (GET /prediction)
 // Predicted glucose 15–60 minutes after the latest CGM reading, from
-// health-predict. Answers {"available": false, "reason": ...} when
-// predictions are off (no PREDICT_URL), the latest reading is too old, or
-// health-predict can't predict from the data; 502 when it can't be reached.
+// health-predict. The prediction recorder (RunPredictionRecorder) keeps it
+// current; this serves its cached answer, predicting only when there's
+// none for the latest reading yet. Answers {"available": false, "reason":
+// ...} when predictions are off (no PREDICT_URL), the latest reading is too
+// old, or health-predict can't predict from the data; 502 when it can't be
+// reached.
 func (h *Handler) GetPrediction(c *gin.Context) {
 	if h.Cfg == nil || h.Cfg.PredictURL == "" {
 		predictionUnavailable(c, "Predictions are not configured")
 		return
 	}
-	ctx := c.Request.Context()
-	db := h.DB.WithContext(ctx)
+	resp, reason, err := h.latestPrediction(c.Request.Context())
+	switch {
+	case errors.Is(err, errPredictService):
+		slog.Error("Prediction service failed", "error", err)
+		c.JSON(http.StatusBadGateway, gin.H{"detail": "Prediction service unavailable"})
+	case err != nil:
+		serverError(c, err)
+	case reason != "":
+		predictionUnavailable(c, reason)
+	default:
+		c.JSON(http.StatusOK, resp)
+	}
+}
 
-	// T: the latest CGM reading from either source, as measured (Dexcom's
-	// ns_time, a live Tandem reading's reading_at).
+// latestPrediction returns the prediction for the latest CGM reading,
+// predicting (and recording) it if the cached one is for an older reading or
+// less pump data. reason is set, and resp nil, when there's no prediction.
+func (h *Handler) latestPrediction(ctx context.Context) (resp *PredictionResponse, reason string, err error) {
+	at, err := h.latestReadingTime(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	if at.IsZero() || time.Since(at) > predictMaxReadingAge {
+		return nil, "The latest reading is more than 15 minutes old", nil
+	}
+	pump, err := h.pumpDataUntil(ctx, at)
+	if err != nil {
+		return nil, "", err
+	}
+
+	h.pred.mu.Lock()
+	defer h.pred.mu.Unlock()
+	if h.pred.resp != nil && h.pred.at.Equal(at) && h.pred.pump.Equal(pump) {
+		return h.pred.resp, "", nil
+	}
+	resp, reason, err = h.predictAt(ctx, at, pump)
+	if err != nil || reason != "" {
+		return nil, reason, err
+	}
+	h.pred.at, h.pred.pump, h.pred.resp = at, pump, resp
+	if err := h.storePrediction(ctx, at, pump, resp); err != nil {
+		slog.Error("Failed to record prediction", "predicted_at", at, "error", err)
+	}
+	return resp, "", nil
+}
+
+// latestReadingTime is T for a live prediction: the latest CGM reading from
+// either source, as measured (Dexcom's ns_time, a live Tandem reading's
+// reading_at). Zero when there's none.
+func (h *Handler) latestReadingTime(ctx context.Context) (time.Time, error) {
 	var latest struct {
 		NsTime   *int64     `gorm:"column:ns_time"`
 		TandemAt *time.Time `gorm:"column:tandem_at"`
 	}
-	if err := db.Raw(`SELECT
+	if err := h.DB.WithContext(ctx).Raw(`SELECT
 		(SELECT ns_time FROM ns_part WHERE ns_datetime <= now() ORDER BY ns_datetime DESC LIMIT 1) AS ns_time,
 		(SELECT reading_at FROM tandem_cgm WHERE reading_at <= now()
 			AND NOT coalesce(event_properties->'cgmDataType' @> '[1]', false)
 			ORDER BY reading_at DESC LIMIT 1) AS tandem_at`).Scan(&latest).Error; err != nil {
-		serverError(c, fmt.Errorf("latest reading: %w", err))
-		return
+		return time.Time{}, fmt.Errorf("latest reading: %w", err)
 	}
 	var at time.Time
 	if latest.NsTime != nil {
@@ -414,57 +468,225 @@ func (h *Handler) GetPrediction(c *gin.Context) {
 	if latest.TandemAt != nil && latest.TandemAt.After(at) {
 		at = latest.TandemAt.UTC()
 	}
-	if at.IsZero() || time.Since(at) > predictMaxReadingAge {
-		predictionUnavailable(c, "The latest reading is more than 15 minutes old")
-		return
-	}
+	return at, nil
+}
 
-	// How far the pump data (insulin and the pump's CGM log, synced
-	// together) reaches, up to T.
+// pumpDataUntil is how far the pump data (insulin and the pump's CGM log,
+// synced together) reaches, up to `at`. Zero when there's none.
+func (h *Handler) pumpDataUntil(ctx context.Context, at time.Time) (time.Time, error) {
 	var watermark struct {
 		PumpUntil *time.Time `gorm:"column:pump_until"`
 	}
-	if err := db.Raw(`SELECT GREATEST(
+	if err := h.DB.WithContext(ctx).Raw(`SELECT GREATEST(
 		(SELECT max(changed_at) FROM tandem_basal WHERE changed_at <= ?),
 		(SELECT max(completed_at) FROM tandem_bolus WHERE completed_at <= ?),
 		(SELECT max(reading_at) FROM tandem_cgm WHERE reading_at <= ?)) AS pump_until`,
 		at, at, at).Scan(&watermark).Error; err != nil {
-		serverError(c, fmt.Errorf("pump data watermark: %w", err))
-		return
+		return time.Time{}, fmt.Errorf("pump data watermark: %w", err)
 	}
-	var pump time.Time
-	if watermark.PumpUntil != nil {
-		pump = watermark.PumpUntil.UTC()
+	if watermark.PumpUntil == nil {
+		return time.Time{}, nil
 	}
+	return watermark.PumpUntil.UTC(), nil
+}
 
-	h.pred.mu.Lock()
-	defer h.pred.mu.Unlock()
-	if h.pred.resp != nil && h.pred.at.Equal(at) && h.pred.pump.Equal(pump) {
-		c.JSON(http.StatusOK, h.pred.resp)
-		return
-	}
-
+// predictAt asks health-predict for the prediction at `at` from what's in
+// the database up to then, adding a warning when the pump data lags.
+func (h *Handler) predictAt(ctx context.Context, at, pump time.Time) (*PredictionResponse, string, error) {
 	req, err := h.buildPredictRequest(ctx, at)
 	if err != nil {
-		serverError(c, err)
-		return
+		return nil, "", err
 	}
 	resp, unavailable, err := callPredict(ctx, h.Cfg.PredictURL, req)
 	if err != nil {
-		slog.Error("Prediction service failed", "error", err)
-		c.JSON(http.StatusBadGateway, gin.H{"detail": "Prediction service unavailable"})
-		return
+		return nil, "", fmt.Errorf("%w: %w", errPredictService, err)
 	}
 	if unavailable != "" {
-		slog.Info("Prediction service declined the request", "detail", unavailable)
-		predictionUnavailable(c, "No prediction can be made from the current data")
-		return
+		slog.Info("Prediction service declined the request", "predicted_at", at, "detail", unavailable)
+		return nil, "No prediction can be made from the current data", nil
 	}
 	if w := pumpLagWarning(at, pump); w != "" {
 		resp.Warnings = append(resp.Warnings, w)
 	}
-	h.pred.at, h.pred.pump, h.pred.resp = at, pump, resp
-	c.JSON(http.StatusOK, resp)
+	return resp, "", nil
+}
+
+// --- Recording (glucose_predictions, migration 00005) ---
+
+const (
+	// How often the recorder checks for a new reading or newer pump data.
+	predictionRecordInterval = time.Minute
+	// How far back the recorder re-predicts readings whose pump data has
+	// since caught up (Tandem syncs hourly by default).
+	predictionRefillWindow = 6 * time.Hour
+	// At most this many re-predictions per tick, so a sync that delivers
+	// hours of pump data doesn't send a burst to health-predict.
+	predictionRefillPerTick = 12
+)
+
+// predictionRow is one horizon of a prediction, as stored.
+type predictionRow struct {
+	Horizon      int
+	Value        float64
+	Lower80      float64
+	Upper80      float64
+	Lower95      float64
+	Upper95      float64
+	ModelVersion string
+}
+
+// predictionRows splits a response into one row per horizon ("15m" -> 15),
+// in horizon order. Keys that aren't "<minutes>m" are skipped.
+func predictionRows(resp *PredictionResponse) []predictionRow {
+	rows := make([]predictionRow, 0, len(resp.Predictions))
+	for key, iv := range resp.Predictions {
+		minutes, err := strconv.Atoi(strings.TrimSuffix(key, "m"))
+		if err != nil || !strings.HasSuffix(key, "m") || minutes <= 0 {
+			continue
+		}
+		rows = append(rows, predictionRow{
+			Horizon: minutes, Value: iv.Value, Lower80: iv.Lower, Upper80: iv.Upper,
+			Lower95: iv.Lower95, Upper95: iv.Upper95, ModelVersion: resp.ModelVersion[key],
+		})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Horizon < rows[j].Horizon })
+	return rows
+}
+
+// storePrediction records a prediction, one row per horizon. A prediction
+// already recorded for the same reading, horizon and pump data is kept.
+func (h *Handler) storePrediction(ctx context.Context, at, pump time.Time, resp *PredictionResponse) error {
+	rows := predictionRows(resp)
+	if len(rows) == 0 {
+		return nil
+	}
+	warnings, err := json.Marshal(resp.Warnings)
+	if err != nil {
+		return err
+	}
+	var pumpUntil *time.Time
+	if !pump.IsZero() {
+		pumpUntil = &pump
+	}
+	var (
+		values []string
+		args   []any
+	)
+	for _, r := range rows {
+		values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)")
+		args = append(args, at, r.Horizon, pumpUntil, resp.CurrentGlucose, r.Value,
+			r.Lower80, r.Upper80, r.Lower95, r.Upper95, r.ModelVersion, string(warnings))
+	}
+	return h.DB.WithContext(ctx).Exec(`INSERT INTO glucose_predictions
+		(predicted_at, horizon_minutes, pump_data_until, current_mmol, predicted_mmol,
+		 lower_80, upper_80, lower_95, upper_95, model_version, warnings)
+		VALUES `+strings.Join(values, ", ")+` ON CONFLICT DO NOTHING`, args...).Error
+}
+
+// RunPredictionRecorder predicts and records every new CGM reading, whether
+// or not anyone has the dashboard open, until ctx is done. Each tick it also
+// looks back over recent readings (refillPredictions): ones that arrived in
+// a batch, so never were the latest, and ones whose pump data has caught up
+// since, so both the as-made and the complete-data predictions are kept.
+func (h *Handler) RunPredictionRecorder(ctx context.Context) {
+	ticker := time.NewTicker(predictionRecordInterval)
+	defer ticker.Stop()
+	for {
+		if _, _, err := h.latestPrediction(ctx); err != nil && ctx.Err() == nil {
+			slog.Warn("Prediction recorder: no prediction for the latest reading", "error", err)
+		}
+		if err := h.refillPredictions(ctx); err != nil && ctx.Err() == nil {
+			slog.Warn("Prediction recorder: re-predicting with newer pump data failed", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// refillPredictions looks back over the last predictionRefillWindow, at most
+// predictionRefillPerTick predictions per call:
+//   - Dexcom readings with no prediction at all: Dexcom Share sometimes
+//     delivers several readings at once, and only the latest is predicted
+//     live. These are predicted from the data up to their own time, so
+//     created_at - predicted_at shows they were made late.
+//   - Recorded readings whose pump data lagged by more than
+//     predictPumpLagWarning, once more pump data for them has arrived.
+func (h *Handler) refillPredictions(ctx context.Context) error {
+	db := h.DB.WithContext(ctx)
+	budget := predictionRefillPerTick
+
+	var missing []int64
+	if err := db.Raw(`SELECT n.ns_time FROM ns_part n
+		WHERE n.ns_datetime > now() - make_interval(secs => ?)
+			AND NOT EXISTS (SELECT 1 FROM glucose_predictions p
+				WHERE p.predicted_at BETWEEN n.ns_datetime - interval '1 second'
+					AND n.ns_datetime + interval '1 second')
+		ORDER BY n.ns_datetime`, predictionRefillWindow.Seconds()).Scan(&missing).Error; err != nil {
+		return fmt.Errorf("readings without predictions: %w", err)
+	}
+	for _, ms := range missing {
+		if budget == 0 || ctx.Err() != nil {
+			return nil
+		}
+		at := time.UnixMilli(ms).UTC()
+		pump, err := h.pumpDataUntil(ctx, at)
+		if err != nil {
+			return err
+		}
+		budget--
+		if err := h.predictAndStore(ctx, at, pump); err != nil {
+			return err
+		}
+	}
+
+	var lagged []struct {
+		PredictedAt time.Time  `gorm:"column:predicted_at"`
+		PumpUntil   *time.Time `gorm:"column:pump_until"`
+	}
+	if err := db.Raw(`SELECT predicted_at, max(pump_data_until) AS pump_until
+		FROM glucose_predictions
+		WHERE predicted_at > now() - make_interval(secs => ?)
+		GROUP BY predicted_at
+		HAVING max(pump_data_until) IS NULL
+			OR max(pump_data_until) < predicted_at - make_interval(secs => ?)
+		ORDER BY predicted_at`,
+		predictionRefillWindow.Seconds(), predictPumpLagWarning.Seconds()).Scan(&lagged).Error; err != nil {
+		return fmt.Errorf("lagged predictions: %w", err)
+	}
+	for _, l := range lagged {
+		if budget == 0 || ctx.Err() != nil {
+			return nil
+		}
+		at := l.PredictedAt.UTC()
+		pump, err := h.pumpDataUntil(ctx, at)
+		if err != nil {
+			return err
+		}
+		if pump.IsZero() || (l.PumpUntil != nil && !pump.After(*l.PumpUntil)) {
+			continue // no newer pump data for this reading yet
+		}
+		budget--
+		if err := h.predictAndStore(ctx, at, pump); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// predictAndStore predicts at `at` and records it. A reading health-predict
+// can't predict from (e.g. no recent glucose) is skipped.
+func (h *Handler) predictAndStore(ctx context.Context, at, pump time.Time) error {
+	resp, reason, err := h.predictAt(ctx, at, pump)
+	if err != nil || reason != "" {
+		return err
+	}
+	if err := h.storePrediction(ctx, at, pump, resp); err != nil {
+		return fmt.Errorf("recording prediction: %w", err)
+	}
+	return nil
 }
 
 // buildPredictRequest reads what was known at `at` and maps it for

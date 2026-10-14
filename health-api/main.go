@@ -122,6 +122,16 @@ func main() {
 	// 6. Create Handler instance
 	h := handlers.NewHandler(db, cfg)
 
+	// Predict and record every new CGM reading in the background (see
+	// handlers.RunPredictionRecorder), so the record has no gaps when nobody
+	// has the dashboard open.
+	recorderCtx, stopRecorder := context.WithCancel(context.Background())
+	defer stopRecorder()
+	if cfg.PredictURL != "" {
+		go h.RunPredictionRecorder(recorderCtx)
+		slog.Info("Prediction recorder started", "predict_url", cfg.PredictURL)
+	}
+
 	// 6. Define Routes
 	// Public endpoints (no auth). Prometheus metrics are served on their
 	// own internal port instead (see newMetricsServer).
@@ -198,6 +208,7 @@ func main() {
 	sig := <-sigChan
 	slog.Info("Received signal, shutting down gracefully", "signal", sig)
 
+	stopRecorder()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

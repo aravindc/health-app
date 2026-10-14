@@ -86,6 +86,9 @@ whenever `health-api` is recreated. If your compose tool ignores
 (`up -d --build health-api health-fe`), or `/api` returns 502 until
 `health-fe` restarts.
 
+To rebuild and restart after an update, use
+[`restart.sh`](#restarting-with-restartsh).
+
 Containers are named after their services (`health-db`, `health-api`, …,
 via `container_name:`), so plain engine commands work without the
 compose-generated prefix, e.g. `docker logs -f health-api` or
@@ -96,6 +99,54 @@ time.
 Bytebase has no `.env` — its admin account and the `health-db` connection
 are both set up through its own first-run web UI at http://localhost:9085,
 not via config.
+
+### Restarting with restart.sh
+
+`restart.sh` rebuilds and restarts the stack with Docker or Podman. Run it
+from anywhere; it works from the repo root:
+
+```bash
+./restart.sh <docker|podman> <up|down-up> [--no-caddy] [--dry-run] [service...]
+```
+
+| Mode | What it does |
+|---|---|
+| `up` | `compose up -d --build`: rebuilds images and recreates only the containers whose image or config changed. Use it after a `git pull`. |
+| `down-up` | Stops and removes the stack (`compose down`) first, then runs `up`. With service names, removes and recreates only those. Use it for a clean restart, e.g. after changing networks. |
+
+| Option | |
+|---|---|
+| `service...` | Limit it to these services, e.g. `health-api health-fe`. Compose also starts their dependencies. |
+| `--no-caddy` | Don't add `docker-compose.caddy.yml`. By default it's added whenever Caddy's network, `caddy-net`, exists, and skipped with a note otherwise. |
+| `--dry-run` | Print the commands without running them. |
+
+```bash
+./restart.sh docker up                          # after a git pull
+./restart.sh podman down-up                     # clean restart of everything
+./restart.sh docker up health-fe                # rebuild and restart the UI only
+./restart.sh docker down-up health-predict      # recreate one service
+./restart.sh podman up --dry-run                # see what it would run
+```
+
+- **Data is never deleted.** `down-up` doesn't use `down -v`, and the
+  database, Bytebase and model files are bind mounts.
+- **The UI is stamped with the current commit** (`GIT_SHA`, shown as
+  `<meta name="app-version">`).
+- **It ends by listing the containers** (`compose ps`).
+- **Podman:** it uses `podman compose` (Podman 4.7+), or `podman-compose`
+  directly if that's missing. It sets `PODMAN_COMPOSE_PROVIDER` to
+  `/usr/bin/podman-compose`, so `podman compose` uses podman-compose. If
+  podman-compose is installed elsewhere (`command -v podman-compose`), change
+  that line.
+
+**If a build can't pull a base image**, e.g. `too many requests to
+registry`: Docker Hub limits anonymous pulls per IP address, and a full
+rebuild pulls several base images. Log in once (`docker login` or
+`podman login docker.io`) for a higher limit, or wait and run it again;
+images already pulled stay cached. If the error also lists a mirror that
+times out (e.g. `docker.mirrors.ustc.edu.cn`), remove that mirror from
+`/etc/containers/registries.conf` (Podman) or the `registry-mirrors` setting
+in `/etc/docker/daemon.json` (Docker).
 
 ### Running with Podman
 
@@ -292,6 +343,37 @@ settings, like every other module; to train on another machine from a copy
 of the server's data, use the optional `health-predict-replica` service
 (profile `predict-replica`) with `PREDICT_DB=replica`. See
 [health-predict's README](health-predict/README.md).
+
+**Every prediction is recorded** in `health-db`, whether or not the
+dashboard is open. With `PREDICT_URL` set, health-api predicts each new
+reading in the background and stores one row per horizon in
+`glucose_predictions`. Each minute it also looks back 6 hours:
+- Readings Dexcom delivered in a batch, which were never the latest, are
+  predicted from the data up to their own time.
+- Readings predicted while the pump data lagged are predicted again once
+  that data arrives. Both versions are kept, told apart by
+  `pump_data_until`.
+
+The view `glucose_prediction_outcomes` adds what actually happened: the
+Dexcom reading nearest T + horizon, the error (predicted − actual) and
+whether it fell inside the 80% and 95% ranges. For example, live accuracy
+by glucose level over the last 14 days:
+
+```sql
+SELECT width_bucket(current_mmol, array[4, 6, 8, 10, 12, 15]) AS band,
+       horizon_minutes,
+       count(*)                                   AS n,
+       round(avg(error_mmol)::numeric, 2)         AS mean_error,
+       round(avg(abs(error_mmol))::numeric, 2)    AS mae,
+       round(100 * avg(within_80::int)::numeric)  AS pct_in_80
+FROM glucose_prediction_outcomes
+WHERE actual_mmol IS NOT NULL AND NOT actual_censored
+  AND predicted_at > now() - interval '14 days'
+GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+To see what pump data lag costs, compare the first and the last
+`pump_data_until` for each reading.
 
 Without `PREDICT_URL`, or when the latest reading is more than 15 minutes
 old, there's no forecast. Pump data arrives through Tandem Source, so it
