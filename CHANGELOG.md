@@ -6,6 +6,16 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`restart.sh`** rebuilds and restarts the stack:
+  `./restart.sh <docker|podman> <up|down-up> [service...]`. `up` recreates
+  only what changed; `down-up` removes the stack (or the listed services)
+  first. It adds the Caddy override when `caddy-net` exists (`--no-caddy`
+  to skip), stamps the UI with the current commit, falls back to
+  podman-compose on Podman before 4.7, and has `--dry-run`. It never
+  deletes data.
+
 ## [1.1.0] - 2026-10-13
 
 ### Security
