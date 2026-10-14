@@ -344,6 +344,37 @@ of the server's data, use the optional `health-predict-replica` service
 (profile `predict-replica`) with `PREDICT_DB=replica`. See
 [health-predict's README](health-predict/README.md).
 
+**Every prediction is recorded** in `health-db`, whether or not the
+dashboard is open. With `PREDICT_URL` set, health-api predicts each new
+reading in the background and stores one row per horizon in
+`glucose_predictions`. Each minute it also looks back 6 hours:
+- Readings Dexcom delivered in a batch, which were never the latest, are
+  predicted from the data up to their own time.
+- Readings predicted while the pump data lagged are predicted again once
+  that data arrives. Both versions are kept, told apart by
+  `pump_data_until`.
+
+The view `glucose_prediction_outcomes` adds what actually happened: the
+Dexcom reading nearest T + horizon, the error (predicted − actual) and
+whether it fell inside the 80% and 95% ranges. For example, live accuracy
+by glucose level over the last 14 days:
+
+```sql
+SELECT width_bucket(current_mmol, array[4, 6, 8, 10, 12, 15]) AS band,
+       horizon_minutes,
+       count(*)                                   AS n,
+       round(avg(error_mmol)::numeric, 2)         AS mean_error,
+       round(avg(abs(error_mmol))::numeric, 2)    AS mae,
+       round(100 * avg(within_80::int)::numeric)  AS pct_in_80
+FROM glucose_prediction_outcomes
+WHERE actual_mmol IS NOT NULL AND NOT actual_censored
+  AND predicted_at > now() - interval '14 days'
+GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+To see what pump data lag costs, compare the first and the last
+`pump_data_until` for each reading.
+
 Without `PREDICT_URL`, or when the latest reading is more than 15 minutes
 old, there's no forecast. Pump data arrives through Tandem Source, so it
 often lags the Dexcom readings; when it's more than 30 minutes behind, the

@@ -220,3 +220,27 @@ func TestGetPrediction_NotConfigured(t *testing.T) {
 		t.Errorf("status %d body %s", w.Code, w.Body.String())
 	}
 }
+
+func TestPredictionRows(t *testing.T) {
+	iv := func(v float64) PredictionInterval {
+		return PredictionInterval{Value: v, Lower: v - 1, Upper: v + 1, Lower95: v - 2, Upper95: v + 2, ConfidenceLevel: 0.8}
+	}
+	resp := &PredictionResponse{
+		Predictions:  map[string]PredictionInterval{"60m": iv(9), "15m": iv(7.5), "30m": iv(8), "bogus": iv(1), "0m": iv(1)},
+		ModelVersion: map[string]string{"15m": "rf/a", "30m": "rf/a", "60m": "rf/b"},
+	}
+	rows := predictionRows(resp)
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3 (bogus keys skipped): %+v", len(rows), rows)
+	}
+	want := []predictionRow{
+		{Horizon: 15, Value: 7.5, Lower80: 6.5, Upper80: 8.5, Lower95: 5.5, Upper95: 9.5, ModelVersion: "rf/a"},
+		{Horizon: 30, Value: 8, Lower80: 7, Upper80: 9, Lower95: 6, Upper95: 10, ModelVersion: "rf/a"},
+		{Horizon: 60, Value: 9, Lower80: 8, Upper80: 10, Lower95: 7, Upper95: 11, ModelVersion: "rf/b"},
+	}
+	for i, w := range want {
+		if rows[i] != w {
+			t.Errorf("row %d = %+v, want %+v", i, rows[i], w)
+		}
+	}
+}

@@ -8,6 +8,15 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Recorded predictions for re-calibrating the model.** health-api now
+  predicts every new CGM reading in the background and stores it in
+  `glucose_predictions` (migration 00005), one row per horizon, whether or
+  not the dashboard is open. Readings Dexcom delivers in a batch are filled
+  in. Readings predicted while pump data lagged are predicted again once it
+  arrives, and both versions are kept. The view
+  `glucose_prediction_outcomes` pairs each prediction with the actual
+  reading at T + horizon, its error and interval coverage. `/prediction`
+  serves the recorder's latest prediction.
 - **`restart.sh`** rebuilds and restarts the stack:
   `./restart.sh <docker|podman> <up|down-up> [service...]`. `up` recreates
   only what changed; `down-up` removes the stack (or the listed services)
