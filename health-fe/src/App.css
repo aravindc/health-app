@@ -13,7 +13,8 @@
   align-items: flex-end;
   justify-content: space-between;
   margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
+  /* Room for the dial's double arrow when it points straight down. */
+  padding-bottom: 1.5rem;
   border-bottom: 1px solid #333;
 }
 
@@ -120,6 +121,9 @@
    inline from chart/cgmColors.ts), with a pointer on its edge rotated to
    the trend. */
 .current-reading {
+  /* Everything about the dial scales from this: its bezel, the reading's
+     font and the room left for the pointer. */
+  --dial-size: 8.75rem;
   --bezel-color: #f2f2f2;
   --reading-text: #fff;
   display: flex;
@@ -140,13 +144,15 @@
 
 .current-reading__dial {
   position: relative;
-  width: 7rem;
-  height: 7rem;
+  width: var(--dial-size);
+  height: var(--dial-size);
   flex: none;
-  /* The pointer swings from straight up to straight down on the right, and
-     a double arrow sticks out ~2.25rem: leave that much room above and
-     below (the flex gap covers the right). */
-  margin: 2.25rem 0;
+  /* The pointer swings from straight up to straight down on the right. A
+     single arrow sticks out a fifth of the dial's size, so a bit more room
+     is left above and below (the flex gap covers the right). The double
+     arrow (rising or falling quickly) reaches a third: it overhangs into the
+     page's top padding or the header's bottom padding, which leaves room. */
+  margin: calc(var(--dial-size) * 0.22) 0;
 }
 
 /* Coloured disc inside a light bezel with a drop shadow, like a raised
@@ -155,7 +161,7 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 0.45rem solid var(--bezel-color);
+  border: calc(var(--dial-size) * 0.064) solid var(--bezel-color);
   background: var(--reading-color);
   color: var(--reading-text);
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
@@ -172,13 +178,13 @@
 }
 
 .current-reading__value {
-  font-size: 2.3rem;
+  font-size: calc(var(--dial-size) * 0.33);
   font-weight: 500;
   line-height: 1;
 }
 
 .current-reading__value--word {
-  font-size: 1.4rem;
+  font-size: calc(var(--dial-size) * 0.2);
 }
 
 /* Same box as the circle, so rotating it swings the tip around the
@@ -907,17 +913,8 @@
     padding: 1rem;
   }
 
-  .current-reading__dial {
-    width: 5.5rem;
-    height: 5.5rem;
-  }
-
-  .current-reading__value {
-    font-size: 1.8rem;
-  }
-
-  .current-reading__value--word {
-    font-size: 1.1rem;
+  .current-reading {
+    --dial-size: 5.5rem;
   }
 
   .insights__grid,
