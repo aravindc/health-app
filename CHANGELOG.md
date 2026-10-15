@@ -14,6 +14,10 @@ uses [Semantic Versioning](https://semver.org/).
   by range and the values on hover. It sits directly above the data labels
   (the gap between them is gone), and on narrow screens it drops below the
   dial at full width.
+- **Larger current-reading dial** (7 → 8.75 rem on wider screens) to fill
+  the header beside the forecast card. Its bezel, number and pointer room
+  now all scale from one size (`--dial-size`); phones keep the compact
+  5.5 rem dial.
 
 ### Added
 
