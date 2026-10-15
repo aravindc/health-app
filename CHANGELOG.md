@@ -6,6 +6,15 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Forecast card in the header.** The predicted values now show as a small
+  card: a miniature of the chart's forecast from the current reading to the
+  15- and 30-minute predictions, with the 80% range shaded, points coloured
+  by range and the values on hover. It sits directly above the data labels
+  (the gap between them is gone), and on narrow screens it drops below the
+  dial at full width.
+
 ### Added
 
 - **Recorded predictions for re-calibrating the model.** health-api now
