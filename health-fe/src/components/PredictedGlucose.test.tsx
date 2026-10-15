@@ -29,8 +29,8 @@ function render(f: Forecast | null) {
 }
 
 const block = () => container.querySelector(".predicted-glucose");
-const rows = () =>
-  [...container.querySelectorAll(".predicted-glucose__row")].map((r) => r.textContent);
+const texts = (cls: string) =>
+  [...container.querySelectorAll(`.${cls}`)].map((t) => t.textContent);
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -45,26 +45,32 @@ afterEach(() => {
 });
 
 describe("PredictedGlucose", () => {
-  it("shows the 15- and 30-minute predictions to one decimal", () => {
+  it("shows now and the 15- and 30-minute predictions to one decimal", () => {
     render(forecast());
-    expect(block()!.querySelector(".predicted-glucose__title")!.textContent).toBe("Predicted");
-    expect(rows()).toEqual(["6.8 in 15 mins", "7.5 in 30 mins"]);
+    expect(block()!.querySelector(".predicted-glucose__title")!.textContent).toBe("Forecast");
+    expect(texts("predicted-glucose__now")).toEqual(["6.2"]);
+    expect(texts("predicted-glucose__value")).toEqual(["6.8", "7.5"]);
+    expect(texts("predicted-glucose__axis")).toEqual(["now", "15 min", "30 min"]);
   });
 
-  it("colours each value by its range, like the dial", () => {
+  it("colours each point by its range, like the dial", () => {
     render(forecast());
-    const colors = [...container.querySelectorAll<HTMLElement>(".predicted-glucose__value")].map((v) =>
-      v.style.getPropertyValue("--predicted-color")
+    const fills = [...container.querySelectorAll(".predicted-glucose__point circle:first-child")].map((c) =>
+      c.getAttribute("fill")
     );
-    expect(colors).toEqual([COLOR_CGM_IN_RANGE, COLOR_CGM_ELEVATED]);
+    expect(fills).toEqual([COLOR_CGM_IN_RANGE, COLOR_CGM_IN_RANGE, COLOR_CGM_ELEVATED]);
   });
 
-  it("gives the 80% ranges and the disclaimer for hover and screen readers", () => {
+  it("shades the 80% range and describes it for hover and screen readers", () => {
     render(forecast());
+    expect(container.querySelector(".predicted-glucose__chart polygon")).not.toBeNull();
+    expect(container.querySelector(".predicted-glucose__chart")!.getAttribute("aria-label")).toBe(
+      "Predicted glucose: 6.8 mmol/L in 15 minutes (80% range 5.8 to 7.8); " +
+        "7.5 mmol/L in 30 minutes (80% range 6.5 to 8.5). Now 6.2 mmol/L."
+    );
+    const tips = [...container.querySelectorAll(".predicted-glucose__point title")].map((t) => t.textContent);
+    expect(tips[1]).toBe("6.8 mmol/L in 15 minutes (80% range 5.8 to 7.8)");
     expect(block()!.getAttribute("title")).toContain("Research use only.");
-    expect(container.querySelector(".predicted-glucose__row")!.getAttribute("aria-label")).toBe(
-      "6.8 mmol/L in 15 minutes, 80% range 5.8 to 7.8"
-    );
   });
 
   it("is hidden without a forecast", () => {

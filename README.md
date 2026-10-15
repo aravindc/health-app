@@ -310,8 +310,8 @@ cd health-tandem-sync
 
 The dashboard can show predicted glucose for the 30 minutes after the
 latest reading: a dashed line with shaded 80% and 95% ranges on the Sensor
-glucose chart, and the 15- and 30-minute values in a Predicted block on
-the right of the header. The predictions come from
+glucose chart, and a forecast card in the header: a small chart from the
+current reading to the 15- and 30-minute predictions, with their 80% range. The predictions come from
 [`health-predict`](health-predict/README.md), a research model trained on
 this pump and CGM data. **It is not a medical device, and its predictions
 must not be used for insulin doses or treatment decisions.** The

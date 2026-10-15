@@ -17,14 +17,14 @@
   border-bottom: 1px solid #333;
 }
 
-/* Right side of the header: the Predicted block above the data labels. */
+/* Right side of the header: the forecast card above the data labels,
+   stacked from the bottom so they stay together. */
 .dashboard__aside {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  align-self: stretch;
-  justify-content: space-between;
-  gap: 0.75rem;
+  justify-content: flex-end;
+  gap: 0.6rem;
 }
 
 .dashboard__labels {
@@ -34,33 +34,71 @@
   gap: 0.125rem;
 }
 
-/* Predicted glucose (research model, PredictedGlucose.tsx). */
+/* Forecast card (research model, PredictedGlucose.tsx), styled like the
+   Insights cards. */
 .predicted-glucose {
+  background: #252525;
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem 0.5rem;
+  width: 240px;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 0.15rem;
+  gap: 0.25rem;
   cursor: help;
 }
 
 .predicted-glucose__title {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #56b4e9; /* the chart's forecast colour */
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: #ccc;
 }
 
-.predicted-glucose__row {
-  font-size: 0.85rem;
-  color: #888;
+.predicted-glucose__chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
 }
 
 .predicted-glucose__value {
-  font-size: 1.15rem;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--predicted-color, #ddd);
+  fill: #e6e6e6;
   font-variant-numeric: tabular-nums;
+}
+
+.predicted-glucose__now {
+  font-size: 12px;
+  fill: #999;
+  font-variant-numeric: tabular-nums;
+}
+
+.predicted-glucose__axis {
+  font-size: 10px;
+  fill: #777;
+}
+
+.predicted-glucose__note {
+  font-size: 0.65rem;
+  color: #777;
+}
+
+/* Narrow screens: the forecast card and labels drop below the dial and
+   take the full width. */
+@media (max-width: 600px) {
+  .dashboard__header {
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
+  }
+
+  .dashboard__aside {
+    width: 100%;
+  }
+
+  .predicted-glucose {
+    width: 100%;
+  }
 }
 
 .dashboard__label {
